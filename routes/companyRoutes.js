@@ -1,6 +1,6 @@
 const express = require('express');
-const authMiddleware = require('../middleware/authMiddleware');
-const roleMiddleware = require('../middleware/roleMiddleware');
+const { authMiddleware } = require('../middleware/authMiddleware');
+const { roleMiddleware } = require('../middleware/roleMiddleware');
 const { validateObjectId } = require('../middleware/validationMiddleware');
 const { createCompany, completeProfile, addAssociations, updateCompany, getAllCompanies, getCompanyById, deleteCompany } = require('../controllers/companyController');
 const router = express.Router();

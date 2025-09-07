@@ -1,6 +1,7 @@
 const express = require('express');
 const { createJobCard, getAllJobCards, getJobCardById, updateJobCard, deleteJobCard } = require('../controllers/jobCardController');
-const { authMiddleware, roleMiddleware } = require('../middleware/authMiddleware');
+const { authMiddleware } = require('../middleware/authMiddleware');
+const {roleMiddleware} = require('../middleware/roleMiddleware');
 
 const router = express.Router();
 

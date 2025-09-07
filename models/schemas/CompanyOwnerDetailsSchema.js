@@ -12,6 +12,7 @@ const CompanyOwnerDetailsSchema = new Schema(
         // Owner ID Number
         ownerIdNumber: {
             type: String,
+            unique: true,
             required: true,
             validate: {
                 validator: (v) => /^[0-9]{8,15}$/.test(v),
@@ -42,6 +43,7 @@ const CompanyOwnerDetailsSchema = new Schema(
         // Owner Email
         ownerEmail: {
             type: String,
+            unique: true,
             required: true,
             lowercase: true,
             trim: true,
@@ -53,9 +55,5 @@ const CompanyOwnerDetailsSchema = new Schema(
     },
     { timestamps: true }
 );
-
-// Indexes
-CompanyOwnerDetailsSchema.index({ ownerIdNumber: 1 }, { unique: true });
-CompanyOwnerDetailsSchema.index({ ownerEmail: 1 }, { unique: true });
 
 module.exports = CompanyOwnerDetailsSchema;

@@ -126,10 +126,4 @@ const DriverSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes for performance
-DriverSchema.index({ driverIdNumber: 1 });
-DriverSchema.index({ driverPhone: 1 });
-DriverSchema.index({ associatedCompany: 1 });
-DriverSchema.index({ userId: 1 });
-
 module.exports = mongoose.model('Driver', DriverSchema);

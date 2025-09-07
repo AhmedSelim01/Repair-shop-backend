@@ -7,6 +7,7 @@ const JobCardSchema = new Schema({
         type: Schema.Types.ObjectId,
         ref: 'Truck',
         required: true,
+        unique: true,
     },
     // Entry Date
     entryDate: {
@@ -65,6 +66,7 @@ const JobCardSchema = new Schema({
     // Company Reference (required if driverName and driverPhone are provided)
     companyId: {
         type: Schema.Types.ObjectId,
+        unique: true,
         ref: 'User',
         required: function() {
             return this.driverName && this.driverPhone;
@@ -74,10 +76,6 @@ const JobCardSchema = new Schema({
     timestamps: true,
 });
 
-// Indexes
-JobCardSchema.index({ truckId: 1 });
-JobCardSchema.index({ companyId: 1 });
-
 // Create JobCard model
-const JobCard = model('JobCard', JobCardSchema);
+const JobCard = mongoose.model('JobCard', JobCardSchema);
 module.exports = JobCard;

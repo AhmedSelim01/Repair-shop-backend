@@ -10,7 +10,6 @@ const PaymentSchema = new mongoose.Schema({
     transactionId: {
         type: String,
         required: true,
-        unique: true,
         default: function() {
             return 'TXN-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
         }
@@ -109,7 +108,7 @@ const PaymentSchema = new mongoose.Schema({
 });
 
 // ===== INDEXES FOR PERFORMANCE =====
-PaymentSchema.index({ transactionId: 1 }, { unique: true });
+PaymentSchema.index({ transactionId: 1 });
 PaymentSchema.index({ jobCardId: 1 });
 PaymentSchema.index({ customerId: 1 });
 PaymentSchema.index({ paymentStatus: 1 });

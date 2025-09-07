@@ -1,32 +1,25 @@
-
-/**
- * PAYMENT CONTROLLER
- * Advanced payment processing with fraud detection, multi-gateway support, and financial analytics
- * Features recurring payments, refunds, and real-time transaction monitoring for 2025 standards
- */
-
 const asyncHandler = require('express-async-handler');
 const Payment = require('../models/Payment');
 const JobCard = require('../models/JobCard');
-const User = require('../models/User');
 const logger = require('../config/logger');
-const paymentService = require('../services/paymentService');
+const Order = require('../models/Order');
+const PaymentService = require('../services/paymentService');
 const Notification = require('../models/Notification');
+const StoreItem = require('../models/StoreItem');
 
 /**
- * PROCESS PAYMENT WITH ADVANCED FRAUD DETECTION
- * @route POST /api/payments/process
+ * PROCESS JOB CARD PAYMENT
+ * @route POST /api/payments/jobcard
  * @access Authenticated users
  */
-const processPayment = asyncHandler(async (req, res) => {
+const processJobCardPayment = asyncHandler(async (req, res) => {
     const { 
         jobCardId, 
         amount, 
         currency = 'AED', 
-        paymentMethod = 'online',
-        customerEmail,
+        paymentMethod = 'credit_card',
+        cardToken, // For credit card payments
         metadata = {},
-        installmentPlan = null // For future installment feature
     } = req.body;
 
     // Validate job card exists and user has permission
@@ -38,7 +31,7 @@ const processPayment = asyncHandler(async (req, res) => {
         });
     }
 
-    // Permission check - user must be the customer or have admin/employee role
+    // Permission check
     if (jobCard.customerId._id.toString() !== req.user.id && 
         !['admin', 'employee'].includes(req.user.role)) {
         return res.status(403).json({
@@ -47,107 +40,38 @@ const processPayment = asyncHandler(async (req, res) => {
         });
     }
 
-    // Fraud detection checks
-    const fraudScore = await calculateFraudScore({
-        amount,
-        userId: req.user.id,
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent'],
-        paymentMethod
-    });
-
-    if (fraudScore > 0.7) {
-        logger.warn('High fraud score detected', {
-            userId: req.user.id,
-            jobCardId,
-            fraudScore,
-            ipAddress: req.ip
-        });
-        
-        return res.status(400).json({
-            success: false,
-            message: 'Payment flagged for review. Please contact support.',
-            requiresVerification: true
-        });
-    }
-
     try {
-        // Create payment record with enhanced tracking
-        const payment = new Payment({
-            jobCardId,
-            partsCost: jobCard.partsUsed?.reduce((sum, part) => sum + (part.cost || 0), 0) || 0,
-            serviceFee: jobCard.estimatedCost || amount,
-            paymentStatus: 'pending',
+        // Process payment using the enhanced service
+        const paymentResult = await PaymentService.processPayment({
+            amount: amount || jobCard.estimatedCost,
+            currency,
             paymentMethod,
+            referenceType: 'jobCard',
+            referenceId: jobCardId,
+            customerId: jobCard.customerId._id,
+            cardToken,
             metadata: {
                 ...metadata,
-                fraudScore,
                 ipAddress: req.ip,
                 userAgent: req.headers['user-agent'],
                 processedBy: req.user.id
             }
         });
 
-        // Process payment through service layer
-        let paymentResult;
-        
-        if (paymentMethod === 'online') {
-            paymentResult = await paymentService.processOnlinePayment({
-                amount: payment.grandTotal * 100, // Convert to cents
-                currency,
-                email: customerEmail || jobCard.customerId.email,
-                jobCardId,
-                metadata: payment.metadata
-            });
-            
-            payment.paymentReference = paymentResult.paymentIntent?.id;
-            payment.paymentStatus = paymentResult.status === 'succeeded' ? 'completed' : 'pending';
-        } else {
-            // Handle cash/credit payments
-            payment.paymentStatus = 'completed';
-            payment.paymentReference = `${paymentMethod.toUpperCase()}-${Date.now()}`;
-        }
-
-        await payment.save();
-
-        // Update job card status if payment successful
-        if (payment.paymentStatus === 'completed') {
-            jobCard.status = 'paid';
-            jobCard.paymentId = payment._id;
-            await jobCard.save();
-
-            // Send success notification
-            await Notification.createNotification(
-                jobCard.customerId._id,
-                `Payment of ${payment.grandTotal} ${currency} processed successfully for job card #${jobCard.jobCardNumber}`
-            );
-
-            // Generate and send invoice
-            await paymentService.generateAndSendInvoice(payment, jobCard);
-        }
-
-        logger.info('Payment processed', {
-            paymentId: payment._id,
-            jobCardId,
-            amount: payment.grandTotal,
-            status: payment.paymentStatus,
-            method: paymentMethod
-        });
+        // Send notification
+        await Notification.createNotification(
+            jobCard.customerId._id,
+            `Payment of ${amount} ${currency} processed for job card #${jobCard.jobCardNumber}`
+        );
 
         res.status(201).json({
             success: true,
-            data: {
-                payment,
-                jobCard: payment.paymentStatus === 'completed' ? jobCard : undefined,
-                paymentIntent: paymentResult?.paymentIntent
-            },
-            message: payment.paymentStatus === 'completed' 
-                ? 'Payment processed successfully' 
-                : 'Payment initiated - awaiting confirmation'
+            data: paymentResult,
+            message: 'Payment processed successfully'
         });
 
     } catch (error) {
-        logger.error('Payment processing error', {
+        logger.error('Job card payment processing error', {
             error: error.message,
             jobCardId,
             userId: req.user.id
@@ -155,8 +79,103 @@ const processPayment = asyncHandler(async (req, res) => {
 
         res.status(500).json({
             success: false,
-            message: 'Payment processing failed',
-            error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+            message: error.message
+        });
+    }
+});
+
+/**
+ * PROCESS ORDER PAYMENT
+ * @route POST /api/payments/order
+ * @access Authenticated users
+ */
+const processOrderPayment = asyncHandler(async (req, res) => {
+    const { 
+        orderId, 
+        paymentMethod = 'credit_card',
+        cardToken, // For credit card payments
+        metadata = {}
+    } = req.body;
+
+    // Validate order exists and belongs to user
+    const order = await Order.findById(orderId).populate('userId');
+    if (!order) {
+        return res.status(404).json({
+            success: false,
+            message: 'Order not found'
+        });
+    }
+
+    // Permission check
+    if (order.userId._id.toString() !== req.user.id) {
+        return res.status(403).json({
+            success: false,
+            message: 'Not authorized to process payment for this order'
+        });
+    }
+
+    if (order.status !== 'pending_payment') {
+        return res.status(400).json({
+            success: false,
+            message: 'Order payment already processed'
+        });
+    }
+
+    try {
+        // Process payment using the enhanced service
+        const paymentResult = await PaymentService.processPayment({
+            amount: order.totalAmount,
+            currency: 'AED',
+            paymentMethod,
+            referenceType: 'order',
+            referenceId: orderId,
+            customerId: order.userId._id,
+            cardToken,
+            metadata: {
+                ...metadata,
+                ipAddress: req.ip,
+                userAgent: req.headers['user-agent'],
+                processedBy: req.user.id
+            }
+        });
+
+        // Update stock quantities for successful payments
+        if (paymentResult.payment.paymentStatus === 'completed') {
+            for (const item of order.items) {
+                await StoreItem.findByIdAndUpdate(
+                    item.productId,
+                    { $inc: { stock: -item.quantity } }
+                );
+            }
+            
+            // Update order status
+            order.status = 'paid';
+            order.paymentId = paymentResult.payment._id;
+            await order.save();
+        }
+
+        // Send notification
+        await Notification.createNotification(
+            order.userId._id,
+            `Payment of ${order.totalAmount} AED processed for order #${order._id}`
+        );
+
+        res.status(200).json({
+            success: true,
+            data: paymentResult,
+            message: 'Payment processed successfully'
+        });
+
+    } catch (error) {
+        logger.error('Order payment processing error', {
+            error: error.message,
+            orderId,
+            userId: req.user.id
+        });
+
+        res.status(500).json({
+            success: false,
+            message: error.message
         });
     }
 });
@@ -176,7 +195,8 @@ const getPaymentHistory = asyncHandler(async (req, res) => {
         dateTo,
         minAmount,
         maxAmount,
-        jobCardId
+        referenceType,
+        referenceId
     } = req.query;
 
     // Build query based on user role
@@ -185,13 +205,17 @@ const getPaymentHistory = asyncHandler(async (req, res) => {
     if (req.user.role === 'general' || req.user.role === 'truck_owner') {
         // Users can only see their own payments
         const userJobCards = await JobCard.find({ customerId: req.user.id }).select('_id');
-        baseQuery.jobCardId = { $in: userJobCards.map(jc => jc._id) };
+        baseQuery.$or = [
+            { jobCardId:{ $in: userJobCards.map(jc => jc._id) } },
+            {customerId: req.user.id }
+        ];
     }
 
-    // Add filters
+    // filters
     if (status) baseQuery.paymentStatus = status;
     if (method) baseQuery.paymentMethod = method;
-    if (jobCardId) baseQuery.jobCardId = jobCardId;
+    if (referenceType) baseQuery.referenceType = referenceType;
+    if (referenceId) baseQuery.referenceId = referenceId;
     
     if (dateFrom || dateTo) {
         baseQuery.createdAt = {};
@@ -208,14 +232,24 @@ const getPaymentHistory = asyncHandler(async (req, res) => {
     // Execute query with population
     const [payments, totalPayments, analytics] = await Promise.all([
         Payment.find(baseQuery)
-            .populate({
-                path: 'jobCardId',
-                select: 'jobCardNumber serviceType status',
+            .populate([
+                {
+                    path: 'jobCardId',
+                    select: 'jobCardNumber serviceType status',
+                    populate: {
+                        path: 'customerId',
+                        select: 'name email'
+                }
+            },
+            {
+                path: referenceId,
+                select: 'orderNumber totalAmount status', 
                 populate: {
-                    path: 'customerId',
+                    path: 'userId',
                     select: 'name email'
                 }
-            })
+            }
+        ])
             .sort({ createdAt: -1 })
             .limit(limit * 1)
             .skip((page - 1) * limit),
@@ -271,7 +305,7 @@ const getPaymentHistory = asyncHandler(async (req, res) => {
  * @route GET /api/payments/:id
  * @access Authenticated users
  */
-const getPaymentDetails = asyncHandler(async (req, res) => {
+const getPaymentById = asyncHandler(async (req, res) => {
     const { id } = req.params;
 
     const payment = await Payment.findById(id)
@@ -311,11 +345,13 @@ const getPaymentDetails = asyncHandler(async (req, res) => {
  * @route POST /api/payments/:id/refund
  * @access Admin/Employee only
  */
-const initiateRefund = asyncHandler(async (req, res) => {
+const refundPayment = asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { amount, reason, refundMethod = 'original' } = req.body;
+    const { amount, reason } = req.body;
 
-    const payment = await Payment.findById(id).populate('jobCardId');
+    const payment = await Payment.findById(id)
+        .populate('jobCardId')
+        .populate('referenceId');
     
     if (!payment) {
         return res.status(404).json({
@@ -345,7 +381,7 @@ const initiateRefund = asyncHandler(async (req, res) => {
         
         // Process refund based on original payment method
         if (payment.paymentMethod === 'online' && payment.paymentReference) {
-            refundResult = await paymentService.processRefund({
+            refundResult = await PaymentService.processRefund({ // Fixed variable name
                 paymentIntentId: payment.paymentReference,
                 amount: refundAmount * 100, // Convert to cents
                 reason
@@ -362,18 +398,46 @@ const initiateRefund = asyncHandler(async (req, res) => {
 
         await payment.save();
 
-        // Update job card status
-        if (refundAmount === payment.grandTotal) {
-            payment.jobCardId.status = 'refunded';
-            await payment.jobCardId.save();
+        // Update reference document status based on type
+        if (payment.referenceType === 'jobCard') {
+            const jobCard = await JobCard.findById(payment.referenceId);
+            if(jobCard) {
+                jobCard.status = refundAmount === payment.grandTotal ? 'refunded' : 'partially_refunded';
+                jobCard.paymentNotes = jobCard.paymentNotes || [];
+                jobCard.paymentNotes.push({
+                    note: `Refund of ${refundAmount} AED processed`,
+                    reason: reason,
+                    date: new Date()
+                });
+                await jobCard.save();
+            }
+        } else if (payment.referenceType === 'order') {
+            const order = await Order.findById(payment.referenceId);
+            if(order) {
+                order.status = refundAmount === payment.grandTotal ? 'refunded' : 'partially_refunded';
+                await order.save();
+                
+                // Restock items for order refunds
+                if (refundAmount === payment.grandTotal) {
+                    for (const item of order.items) {
+                        await StoreItem.findByIdAndUpdate(
+                            item.productId,
+                            { $inc: { stock: item.quantity } }
+                        );
+                    }
+                }
+            }
         }
 
         // Send notification to customer
-        const customer = await User.findById(payment.jobCardId.customerId);
-        if (customer) {
+        const customerId = payment.referenceType === 'jobCard' 
+            ? payment.jobCardId?.customerId 
+            : payment.referenceId?.userId;
+            
+        if (customerId) {
             await Notification.createNotification(
-                customer._id,
-                `Refund of ${refundAmount} AED has been processed for your payment. Reason: ${reason}`
+                customerId,
+                `Refund of ${refundAmount} AED has been processed for your ${payment.referenceType}. Reason: ${reason}`
             );
         }
 
@@ -405,12 +469,12 @@ const initiateRefund = asyncHandler(async (req, res) => {
 });
 
 /**
- * GET FINANCIAL ANALYTICS
+ * GET PAYMENT ANALYTICS
  * @route GET /api/payments/analytics
  * @access Admin/Employee only
  */
-const getFinancialAnalytics = asyncHandler(async (req, res) => {
-    const { period = '30d', groupBy = 'day' } = req.query;
+const getPaymentAnalytics = asyncHandler(async (req, res) => {
+    const { period = '30d', groupBy = 'day', referenceType } = req.query;
 
     // Calculate date range
     const endDate = new Date();
@@ -431,14 +495,19 @@ const getFinancialAnalytics = asyncHandler(async (req, res) => {
             break;
     }
 
-    // Advanced financial analytics
+    // Build match query
+    const matchQuery = {
+        paymentStatus: 'completed',
+        createdAt: { $gte: startDate, $lte: endDate }
+    };
+    
+    if (referenceType) {
+        matchQuery.referenceType = referenceType;
+    }
+
+    // Advanced payment analytics
     const analytics = await Payment.aggregate([
-        {
-            $match: {
-                paymentStatus: 'completed',
-                createdAt: { $gte: startDate, $lte: endDate }
-            }
-        },
+        { $match: matchQuery },
         {
             $facet: {
                 overview: [
@@ -480,19 +549,10 @@ const getFinancialAnalytics = asyncHandler(async (req, res) => {
                     },
                     { $sort: { '_id.date': 1 } }
                 ],
-                serviceTypes: [
-                    {
-                        $lookup: {
-                            from: 'jobcards',
-                            localField: 'jobCardId',
-                            foreignField: '_id',
-                            as: 'jobCard'
-                        }
-                    },
-                    { $unwind: '$jobCard' },
+                referenceTypes: [
                     {
                         $group: {
-                            _id: '$jobCard.serviceType',
+                            _id: '$referenceType',
                             revenue: { $sum: '$grandTotal' },
                             count: { $sum: 1 }
                         }
@@ -507,7 +567,7 @@ const getFinancialAnalytics = asyncHandler(async (req, res) => {
     const overview = analyticsData.overview[0] || {};
 
     // Calculate growth rates
-    const previousPeriodAnalytics = await calculatePreviousPeriodGrowth(startDate, period);
+    const previousPeriodAnalytics = await calculatePreviousPeriodGrowth(startDate, period, referenceType);
 
     res.status(200).json({
         success: true,
@@ -520,7 +580,7 @@ const getFinancialAnalytics = asyncHandler(async (req, res) => {
             },
             breakdown: {
                 byPaymentMethod: analyticsData.byMethod,
-                byServiceType: analyticsData.serviceTypes
+                byReferenceType: analyticsData.referenceTypes
             },
             trends: {
                 timeline: analyticsData.timeline
@@ -530,47 +590,202 @@ const getFinancialAnalytics = asyncHandler(async (req, res) => {
     });
 });
 
-// Helper Functions
-
 /**
- * Calculate fraud score based on multiple factors
+ * HANDLE PAYMENT WEBHOOKS
+ * @route POST /api/payments/webhook
+ * @access Payment gateway
  */
-async function calculateFraudScore(data) {
-    let score = 0;
+const webhookPaymentHandler = asyncHandler(async (req, res) => {
+    const event = req.body;
+    logger.info('Received payment webhook', {
+        eventType: event.type,
+        eventId: event.id
+    });
 
-    // Check for unusual amounts
-    const userPayments = await Payment.find({ 
-        'metadata.processedBy': data.userId 
-    }).sort({ createdAt: -1 }).limit(10);
+    try {
+        switch (event.type) {
+            case 'payment_intent.succeeded':
+                await handlePaymentSuccess(event.data.object);
+                break;
+            case 'payment_intent.payment_failed':
+                await handlePaymentFailure(event.data.object);
+                break;
+            case 'charge.refunded':
+                await handleRefundProcessed(event.data.object);
+                break;
+            default:
+                logger.warn('Unhandled webhook event type', { type: event.type });
+        }
 
-    if (userPayments.length > 0) {
-        const avgAmount = userPayments.reduce((sum, p) => sum + p.grandTotal, 0) / userPayments.length;
-        if (data.amount > avgAmount * 3) score += 0.3;
+        res.status(200).json({ success: true });
+    } catch (error) {
+        logger.error('Webhook processing failed', {
+            error: error.message,
+            event
+        });
+        res.status(500).json({ success: false });
+    }
+});
+
+// Webhook handler implementations
+async function handlePaymentSuccess(paymentIntent) {
+    const payment = await Payment.findOne({ paymentReference: paymentIntent.id });
+    if (!payment) {
+        logger.error('Payment not found for successful webhook', {
+            paymentIntentId: paymentIntent.id
+        });
+        return;
     }
 
-    // Check for rapid successive payments
-    const recentPayments = await Payment.countDocuments({
-        'metadata.processedBy': data.userId,
-        createdAt: { $gte: new Date(Date.now() - 60000) } // Last minute
+    payment.paymentStatus = 'completed';
+    await payment.save();
+
+    // Update the relevant document based on reference type
+    if (payment.referenceType === 'jobCard') {
+        const jobCard = await JobCard.findById(payment.referenceId);
+        if (jobCard) {
+            jobCard.status = 'paid';
+            jobCard.paymentId = payment._id;
+            await jobCard.save();
+        }
+
+        // Send notification
+        await Notification.createNotification(
+            jobCard.customerId,
+            `Payment of ${payment.grandTotal} AED processed successfully for job card #${jobCard.jobCardNumber}`
+        );
+    } else if (payment.referenceType === 'order') {
+        const order = await Order.findById(payment.referenceId);
+        if (order) {
+            order.status = 'paid';
+            order.paymentId = payment._id;
+            await order.save();
+            
+            // Update stock for orders
+            for (const item of order.items) {
+                await StoreItem.findByIdAndUpdate(
+                    item.productId,
+                    { $inc: { stock: -item.quantity } }
+                );
+            }
+        }
+
+        // Send notification
+        await Notification.createNotification(
+            order.userId,
+            `Payment of ${payment.grandTotal} AED processed successfully for order #${order.orderNumber}`
+        );
+    }
+
+    logger.info('Payment confirmed via webhook', {
+        paymentId: payment._id,
+        referenceType: payment.referenceType,
+        referenceId: payment.referenceId
     });
-
-    if (recentPayments > 3) score += 0.4;
-
-    // Check for suspicious IP patterns
-    const ipPayments = await Payment.countDocuments({
-        'metadata.ipAddress': data.ipAddress,
-        createdAt: { $gte: new Date(Date.now() - 3600000) } // Last hour
-    });
-
-    if (ipPayments > 10) score += 0.3;
-
-    return Math.min(score, 1.0);
 }
+
+async function handlePaymentFailure(paymentIntent) {
+    const payment = await Payment.findOne({ paymentReference: paymentIntent.id });
+    if (!payment) return;
+
+    payment.paymentStatus = 'failed';
+    payment.failureReason = paymentIntent.last_payment_error?.message || 'Unknown error';
+    await payment.save();
+
+    // Send notification based on reference type
+    if (payment.referenceType === 'jobCard') {
+        const jobCard = await JobCard.findById(payment.referenceId);
+        if (jobCard) {
+            await Notification.createNotification(
+                jobCard.customerId,
+                `Payment failed for job card #${jobCard.jobCardNumber}. Reason: ${payment.failureReason}`
+            );
+        }
+    } else if (payment.referenceType === 'order') {
+        const order = await Order.findById(payment.referenceId);
+        if (order) {
+            await Notification.createNotification(
+                order.userId,
+                `Payment failed for order #${order.orderNumber}. Reason: ${payment.failureReason}`
+            );
+        }
+    }
+
+    logger.warn('Payment failed via webhook', {
+        paymentId: payment._id,
+        reason: payment.failureReason
+    });
+}
+
+async function handleRefundProcessed(charge) {
+    const refund = charge.refunds.data[0];
+    if (!refund) return;
+
+    const payment = await Payment.findOne({ paymentReference: charge.payment_intent });
+    if (!payment) return;
+
+    payment.refundAmount = refund.amount / 100;
+    payment.refundStatus = 'processed';
+    payment.refundDate = new Date(refund.created * 1000);
+    payment.refundReference = refund.id;
+    await payment.save();
+
+    // Update reference document status based on type
+    if (payment.referenceType === 'jobCard') {
+        const jobCard = await JobCard.findById(payment.referenceId);
+        if (jobCard) {
+            jobCard.status = payment.refundAmount === payment.grandTotal ? 'refunded' : 'partially_refunded';
+            await jobCard.save();
+        }
+    } else if (payment.referenceType === 'order') {
+        const order = await Order.findById(payment.referenceId);
+        if (order) {
+            order.status = payment.refundAmount === payment.grandTotal ? 'refunded' : 'partially_refunded';
+            await order.save();
+            
+            // Restock items for full refunds
+            if (payment.refundAmount === payment.grandTotal) {
+                for (const item of order.items) {
+                    await StoreItem.findByIdAndUpdate(
+                        item.productId,
+                        { $inc: { stock: item.quantity } }
+                    );
+                }
+            }
+        }
+    }
+
+    // Send notification based on reference type
+    if (payment.referenceType === 'jobCard') {
+        const jobCard = await JobCard.findById(payment.referenceId);
+        if (jobCard) {
+            await Notification.createNotification(
+                jobCard.customerId,
+                `Refund of ${payment.refundAmount} AED processed for job card #${jobCard.jobCardNumber}`
+            );
+        }
+    } else if (payment.referenceType === 'order') {
+        const order = await Order.findById(payment.referenceId);
+        if (order) {
+            await Notification.createNotification(
+                order.userId,
+                `Refund of ${payment.refundAmount} AED processed for order #${order.orderNumber}`
+            );
+        }
+    }
+
+    logger.info('Refund processed via webhook', {
+        paymentId: payment._id,
+        refundAmount: payment.refundAmount
+    });
+}
+
+// Helper Functions
 
 /**
  * Calculate previous period growth for comparison
  */
-async function calculatePreviousPeriodGrowth(startDate, period) {
+async function calculatePreviousPeriodGrowth(startDate, period, referenceType = null) {
     const periodDays = {
         '7d': 7,
         '30d': 30,
@@ -584,13 +799,17 @@ async function calculatePreviousPeriodGrowth(startDate, period) {
     
     const previousEndDate = new Date(startDate);
 
+    const matchQuery = {
+        paymentStatus: 'completed',
+        createdAt: { $gte: previousStartDate, $lt: previousEndDate }
+    };
+    
+    if (referenceType) {
+        matchQuery.referenceType = referenceType;
+    }
+
     const previousStats = await Payment.aggregate([
-        {
-            $match: {
-                paymentStatus: 'completed',
-                createdAt: { $gte: previousStartDate, $lt: previousEndDate }
-            }
-        },
+        { $match: matchQuery },
         {
             $group: {
                 _id: null,
@@ -600,13 +819,17 @@ async function calculatePreviousPeriodGrowth(startDate, period) {
         }
     ]);
 
+    const currentMatchQuery = {
+        paymentStatus: 'completed',
+        createdAt: { $gte: startDate }
+    };
+    
+    if (referenceType) {
+        currentMatchQuery.referenceType = referenceType;
+    }
+
     const currentStats = await Payment.aggregate([
-        {
-            $match: {
-                paymentStatus: 'completed',
-                createdAt: { $gte: startDate }
-            }
-        },
+        { $match: currentMatchQuery },
         {
             $group: {
                 _id: null,
@@ -659,9 +882,11 @@ function generateFinancialInsights(analyticsData) {
 }
 
 module.exports = {
-    processPayment,
+    processJobCardPayment,
+    processOrderPayment,
     getPaymentHistory,
-    getPaymentDetails,
-    initiateRefund,
-    getFinancialAnalytics
+    getPaymentById,
+    refundPayment,
+    getPaymentAnalytics,
+    webhookPaymentHandler
 };

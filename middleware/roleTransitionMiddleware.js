@@ -1,6 +1,11 @@
-// middlewares/roleTransitionHandler.js
+const asyncHandler = require('express-async-handler');
+const User = require('../models/User'); // Added import
+const Company = require('../models/Company'); // Added import
+const Driver = require('../models/Driver'); // Added import
+const Truck = require('../models/Truck'); // Added import
+
 exports.handleRoleTransition = asyncHandler(async (req, res, next) => {
-    const { role, companyName, licensePlate, companyId, driverInfo, companyDetails,  brand } = req.body;
+    const { role, companyName, licensePlate, companyId, driverInfo, companyDetails, brand } = req.body;
     const userId = req.user.id;
 
     try {
@@ -9,22 +14,25 @@ exports.handleRoleTransition = asyncHandler(async (req, res, next) => {
             return res.status(404).json({ success: false, message: 'User not found.' });
         }
 
+        let newCompany; // Declare in parent scope for response access
+
         switch (role) {
-            case 'company':
+            case 'company': {
                 if (user.companyId) {
                     return res.status(400).json({ success: false, message: 'Already linked to a company.' });
                 }
 
                 // Create company and update user role
-                const newCompany = await Company.create({
+                newCompany = await Company.create({
                     companyName: companyName || `Company-${user.email}`,
                     contactEmail: user.email,
                 });
                 user.role = 'company';
                 user.companyId = newCompany._id;
                 break;
+            }
 
-            case 'company_driver':
+            case 'company_driver': {
                 if (!companyId || !driverInfo) {
                     return res.status(400).json({ success: false, message: 'Company ID and driver information required.' });
                 }
@@ -39,7 +47,7 @@ exports.handleRoleTransition = asyncHandler(async (req, res, next) => {
                 }
 
                 // Create driver record
-                const companyDriver = await Driver.create({
+                await Driver.create({
                     driverName: driverInfo.name,
                     driverPhone: driverInfo.phoneNumber,
                     driverIdNumber: driverInfo.idNumber,
@@ -52,14 +60,15 @@ exports.handleRoleTransition = asyncHandler(async (req, res, next) => {
                 user.role = 'company_driver';
                 user.driverInfo = driverInfo;
                 break;
+            }
 
-            case 'unregistered_driver':
+            case 'unregistered_driver': {
                 if (!driverInfo || !companyDetails) {
                     return res.status(400).json({ success: false, message: 'Driver and company information required.' });
                 }
 
                 // Create driver record for unregistered company
-                const unregisteredDriver = await Driver.create({
+                await Driver.create({
                     driverName: driverInfo.name,
                     driverPhone: driverInfo.phoneNumber,
                     driverIdNumber: driverInfo.idNumber,
@@ -73,8 +82,9 @@ exports.handleRoleTransition = asyncHandler(async (req, res, next) => {
                 user.driverInfo = driverInfo;
                 user.companyDetails = companyDetails;
                 break;
+            }
 
-            case 'truck_owner':
+            case 'truck_owner': {
                 if (!licensePlate || !brand) {
                     return res.status(400).json({ success: false, message: 'License plate and truck brand are required.' });
                 }
@@ -91,6 +101,7 @@ exports.handleRoleTransition = asyncHandler(async (req, res, next) => {
                 user.licensePlate = licensePlate;
                 user.associatedTrucks = [truck._id];
                 break;
+            }
 
             default:
                 return res.status(400).json({ success: false, message: 'Invalid role specified.' });
@@ -105,7 +116,7 @@ exports.handleRoleTransition = asyncHandler(async (req, res, next) => {
         };
 
         if (role === 'company') {
-            response.company = newCompany;
+            response.company = newCompany; // Now properly defined
             response.needsProfileCompletion = true;
             response.message += ' Please complete your company profile with additional details.';
         }

@@ -1,19 +1,16 @@
-
 const User = require('../models/User');
 const StoreItem = require('../models/StoreItem');
 const Cart = require('../models/Cart');
 const JobCard = require('../models/JobCard');
+const mongoose = require('mongoose');
 
-// AI-powered recommendation engine for 2025
 class RecommendationEngine {
     
     // Get personalized product recommendations
     static async getRecommendations(userId, currentProductId = null, limit = 10) {
         try {
             const user = await User.findById(userId);
-            if (!user) {
-                throw new Error('User not found');
-            }
+            if (!user) throw new Error('User not found');
 
             // Get user's purchase history and preferences
             const userCarts = await Cart.find({ userId, status: 'checked-out' })
@@ -22,131 +19,232 @@ class RecommendationEngine {
             const userJobCards = await JobCard.find({ companyId: userId })
                 .populate('truckId');
 
-            // Collaborative filtering based on similar users
+            // Get all recommendation sources
             const collaborativeRecommendations = await this.getCollaborativeRecommendations(userId, limit);
-            
-            // Content-based filtering based on user's truck/company type
             const contentBasedRecommendations = await this.getContentBasedRecommendations(user, userJobCards, limit);
-            
-            // Trending items for the user's category
-            const trendingRecommendations = await this.getTrendingRecommendations(user, limit);
+            const purchaseHistoryRecommendations = await this.getPurchaseHistoryRecommendations(userCarts, limit);
+            const truckModelRecommendations = await this.getTruckModelRecommendations(userJobCards, limit);
             
             // Combine and rank recommendations using hybrid approach
             const hybridRecommendations = this.combineRecommendations([
-                { recommendations: collaborativeRecommendations, weight: 0.4 },
-                { recommendations: contentBasedRecommendations, weight: 0.4 },
-                { recommendations: trendingRecommendations, weight: 0.2 }
+                { recommendations: collaborativeRecommendations, weight: 0.45 }, // Increased from 0.4
+                { recommendations: contentBasedRecommendations, weight: 0.35 },  // Decreased from 0.4
+                { recommendations: purchaseHistoryRecommendations, weight: 0.15 },
+                { recommendations: truckModelRecommendations, weight: 0.05 }     // Decreased from 0.1
             ], limit);
 
             // Filter out current product if provided
-            const filteredRecommendations = currentProductId 
-                ? hybridRecommendations.filter(item => item._id.toString() !== currentProductId)
-                : hybridRecommendations;
+            const filteredRecommendations = hybridRecommendations.filter(item => 
+                currentProductId ? item._id.toString() !== currentProductId : true
+            );
 
             return filteredRecommendations.slice(0, limit);
             
         } catch (error) {
             console.error('Recommendation engine error:', error);
             // Fallback to popular items
-            return await StoreItem.findTrending(limit);
+            return await StoreItem.find({ 
+                status: 'active',
+                isAvailable: true 
+            })
+            .sort({ salesCount: -1, rating: -1 })
+            .limit(limit);
         }
     }
 
     // Collaborative filtering: Find users with similar purchasing patterns
     static async getCollaborativeRecommendations(userId, limit) {
-        const userCartItems = await Cart.aggregate([
-            { $match: { userId: userId, status: 'checked-out' } },
-            { $unwind: '$items' },
-            { $group: { _id: '$items.productId', count: { $sum: 1 } } }
-        ]);
+        try {
+            const userCartItems = await Cart.aggregate([
+                { $match: { userId: mongoose.Types.ObjectId(userId), status: 'checked-out' } },
+                { $unwind: '$items' },
+                { $group: { _id: '$items.productId', count: { $sum: 1 } } }
+            ]);
 
-        const userProductIds = userCartItems.map(item => item._id);
+            const userProductIds = userCartItems.map(item => item._id);
 
-        if (userProductIds.length === 0) {
-            return await StoreItem.findTrending(limit);
-        }
+            if (userProductIds.length === 0) {
+                return await StoreItem.find({ 
+                    status: 'active',
+                    isAvailable: true 
+                })
+                .sort({ salesCount: -1 })
+                .limit(limit);
+            }
 
-        // Find similar users who bought similar products
-        const similarUsers = await Cart.aggregate([
-            { $match: { status: 'checked-out', userId: { $ne: userId } } },
-            { $unwind: '$items' },
-            { $match: { 'items.productId': { $in: userProductIds } } },
-            { $group: { 
-                _id: '$userId', 
-                commonProducts: { $sum: 1 },
-                products: { $push: '$items.productId' }
-            }},
-            { $match: { commonProducts: { $gte: 2 } } },
-            { $sort: { commonProducts: -1 } },
-            { $limit: 50 }
-        ]);
+            // Find similar users who bought similar products
+            const similarUsers = await Cart.aggregate([
+                { $match: { 
+                    status: 'checked-out', 
+                    userId: { $ne: mongoose.Types.ObjectId(userId) } 
+                }},
+                { $unwind: '$items' },
+                { $match: { 'items.productId': { $in: userProductIds } } },
+                { $group: { 
+                    _id: '$userId', 
+                    commonProducts: { $sum: 1 },
+                    products: { $push: '$items.productId' }
+                }},
+                { $match: { commonProducts: { $gte: 2 } } },
+                { $sort: { commonProducts: -1 } },
+                { $limit: 50 }
+            ]);
 
-        // Get products bought by similar users but not by current user
-        const recommendedProductIds = [];
-        similarUsers.forEach(user => {
-            user.products.forEach(productId => {
-                if (!userProductIds.includes(productId) && !recommendedProductIds.includes(productId)) {
-                    recommendedProductIds.push(productId);
-                }
+            // Get products bought by similar users but not by current user
+            const recommendedProductIds = [];
+            similarUsers.forEach(user => {
+                user.products.forEach(productId => {
+                    if (!userProductIds.includes(productId.toString()) && 
+                        !recommendedProductIds.includes(productId.toString())) {
+                        recommendedProductIds.push(productId.toString());
+                    }
+                });
             });
-        });
 
-        return await StoreItem.find({ 
-            _id: { $in: recommendedProductIds },
-            status: 'active',
-            isAvailable: true
-        }).limit(limit);
+            return await StoreItem.find({ 
+                _id: { $in: recommendedProductIds },
+                status: 'active',
+                isAvailable: true
+            }).limit(limit);
+            
+        } catch (error) {
+            console.error('Collaborative filtering error:', error);
+            return [];
+        }
+    }
+
+    // Recommend items similar to what user previously purchased
+    static async getPurchaseHistoryRecommendations(userCarts, limit) {
+        try {
+            // Extract all purchased product IDs
+            const purchasedProductIds = [];
+            userCarts.forEach(cart => {
+                cart.items.forEach(item => {
+                    // Added null check for productId
+                    if (item.productId && item.productId._id) {
+                        purchasedProductIds.push(item.productId._id.toString());
+                    }
+                });
+            });
+
+            if (purchasedProductIds.length === 0) return [];
+
+            // Find similar items based on purchase history
+            return await StoreItem.aggregate([
+                { 
+                    $match: { 
+                        _id: { $nin: purchasedProductIds.map(id => mongoose.Types.ObjectId(id)) },
+                        status: 'active',
+                        isAvailable: true
+                    } 
+                },
+                {
+                    $lookup: {
+                        from: "storeitems",
+                        localField: "category",
+                        foreignField: "category",
+                        as: "similarItems"
+                    }
+                },
+                { $unwind: "$similarItems" },
+                { 
+                    $match: { 
+                        "similarItems._id": { $in: purchasedProductIds.map(id => mongoose.Types.ObjectId(id)) }
+                    } 
+                },
+                { $group: { _id: "$_id", doc: { $first: "$$ROOT" }, matchCount: { $sum: 1 } } },
+                { $sort: { matchCount: -1 } },
+                { $limit: limit },
+                { $replaceRoot: { newRoot: "$doc" } }
+            ]);
+            
+        } catch (error) {
+            console.error('Purchase history recommendations error:', error);
+            return [];
+        }
+    }
+
+    // Recommend items based on truck models in user's job cards
+    static async getTruckModelRecommendations(userJobCards, limit) {
+        try {
+            // Extract unique truck models from job cards
+            const truckModels = [...new Set(
+                userJobCards
+                    .map(job => job.truckId?.model)
+                    .filter(model => model && typeof model === 'string')
+            )];
+
+            if (truckModels.length === 0) return [];
+
+            // Create regex pattern for truck models
+            const regexPattern = truckModels.map(model => 
+                model.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Escape regex special characters
+            ).join('|');
+
+            // Find items specifically for these truck models
+            return await StoreItem.find({
+                $or: [
+                    { description: { $regex: regexPattern, $options: 'i' } },
+                    { name: { $regex: regexPattern, $options: 'i' } }
+                ],
+                status: 'active',
+                isAvailable: true
+            })
+            .sort({ salesCount: -1 })
+            .limit(limit);
+            
+        } catch (error) {
+            console.error('Truck model recommendations error:', error);
+            return [];
+        }
     }
 
     // Content-based filtering: Recommend based on user's truck types and job patterns
     static async getContentBasedRecommendations(user, userJobCards, limit) {
-        const truckTypes = userJobCards.map(job => job.truckId?.model).filter(Boolean);
-        const commonRepairTypes = this.extractCommonRepairTypes(userJobCards);
+        try {
+            const commonRepairTypes = this.extractCommonRepairTypes(userJobCards);
 
-        // Map repair types to product categories
-        const categoryMapping = {
-            'engine': ['Engine Parts', 'Filters', 'Fluids'],
-            'brake': ['Brake System'],
-            'transmission': ['Transmission', 'Fluids'],
-            'electrical': ['Electrical'],
-            'body': ['Body Parts'],
-            'maintenance': ['Filters', 'Fluids', 'Tools']
-        };
+            // Map repair types to product categories
+            const categoryMapping = {
+                'engine': ['Engine Parts', 'Filters', 'Fluids'],
+                'brake': ['Brake System'],
+                'transmission': ['Transmission', 'Fluids'],
+                'electrical': ['Electrical'],
+                'body': ['Body Parts'],
+                'maintenance': ['Filters', 'Fluids', 'Tools']
+            };
 
-        const recommendedCategories = [];
-        commonRepairTypes.forEach(repairType => {
-            const categories = categoryMapping[repairType.toLowerCase()] || [];
-            recommendedCategories.push(...categories);
-        });
+            let recommendedCategories = [];
+            commonRepairTypes.forEach(repairType => {
+                const categories = categoryMapping[repairType.toLowerCase()] || [];
+                recommendedCategories.push(...categories);
+            });
 
-        // Get products from recommended categories
-        const recommendations = await StoreItem.find({
-            category: { $in: recommendedCategories },
-            status: 'active',
-            isAvailable: true
-        })
-        .sort({ salesCount: -1, rating: -1 })
-        .limit(limit);
+            // Remove duplicates
+            recommendedCategories = [...new Set(recommendedCategories)];
 
-        return recommendations;
-    }
+            if (recommendedCategories.length === 0) {
+                return await StoreItem.find({ 
+                    status: 'active',
+                    isAvailable: true 
+                })
+                .sort({ salesCount: -1 })
+                .limit(limit);
+            }
 
-    // Get trending recommendations based on user's role and industry
-    static async getTrendingRecommendations(user, limit) {
-        const baseQuery = {
-            status: 'active',
-            isAvailable: true
-        };
-
-        // Customize based on user role
-        if (user.role === 'company') {
-            // Companies might need more specialized tools and bulk items
-            baseQuery.category = { $in: ['Tools', 'Fluids', 'Filters'] };
-        }
-
-        return await StoreItem.find(baseQuery)
-            .sort({ views: -1, salesCount: -1, 'rating.average': -1 })
+            // Get products from recommended categories
+            return await StoreItem.find({
+                category: { $in: recommendedCategories },
+                status: 'active',
+                isAvailable: true
+            })
+            .sort({ salesCount: -1, rating: -1 })
             .limit(limit);
+            
+        } catch (error) {
+            console.error('Content-based recommendations error:', error);
+            return [];
+        }
     }
 
     // Extract common repair types from job card descriptions
@@ -208,37 +306,11 @@ class RecommendationEngine {
             .map(({ item }) => item)
             .slice(0, limit);
     }
-
-    // Get seasonal recommendations (2025 AI feature)
-    static async getSeasonalRecommendations(userId, limit = 5) {
-        const currentMonth = new Date().getMonth();
-        let seasonalCategories = [];
-
-        // Define seasonal patterns
-        if (currentMonth >= 11 || currentMonth <= 2) { // Winter
-            seasonalCategories = ['Engine Parts', 'Fluids', 'Electrical'];
-        } else if (currentMonth >= 3 && currentMonth <= 5) { // Spring
-            seasonalCategories = ['Filters', 'Tools', 'Body Parts'];
-        } else if (currentMonth >= 6 && currentMonth <= 8) { // Summer
-            seasonalCategories = ['Brake System', 'Fluids', 'Accessories'];
-        } else { // Fall
-            seasonalCategories = ['Filters', 'Engine Parts', 'Tools'];
-        }
-
-        return await StoreItem.find({
-            category: { $in: seasonalCategories },
-            status: 'active',
-            isAvailable: true
-        })
-        .sort({ salesCount: -1 })
-        .limit(limit);
-    }
 }
 
 // Export methods
 module.exports = {
     getRecommendations: RecommendationEngine.getRecommendations.bind(RecommendationEngine),
-    getSeasonalRecommendations: RecommendationEngine.getSeasonalRecommendations.bind(RecommendationEngine),
     getCollaborativeRecommendations: RecommendationEngine.getCollaborativeRecommendations.bind(RecommendationEngine),
     getContentBasedRecommendations: RecommendationEngine.getContentBasedRecommendations.bind(RecommendationEngine)
 };

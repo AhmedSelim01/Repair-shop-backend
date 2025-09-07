@@ -1,6 +1,7 @@
 // Import required dependencies
-const asyncHandler = require('express-async-handler'); // Async error handling wrapper
-const Company = require('../models/Company'); // Company data model
+const asyncHandler = require('express-async-handler');
+const Company = require('../models/Company');
+const mongoose = require('mongoose');
 
 /**
  * CREATE COMPANY ENDPOINT
@@ -13,7 +14,7 @@ exports.createCompany = asyncHandler(async(req, res, next) => {
         const { companyName, contactEmail } = req.body;
 
         // Note: This ID validation appears to be misplaced - should be removed
-        if (!mongoose.Types.ObjectId.isValid(id)) {
+        if (!mongoose.Types.ObjectId.isValid(Company._id)) {
             return res.status(400).json({ success: false, message: 'Invalid company ID.' });
         }
 
@@ -189,7 +190,7 @@ exports.updateCompany = asyncHandler(async (req, res, next) => {
 exports.getAllCompanies = asyncHandler(async(res, next) => {
     try {
 
-        if (!mongoose.Types.ObjectId.isValid(id)) {
+        if (!mongoose.Types.ObjectId.isValid(Company._id)) {
             return res.status(400).json({ success: false, message: 'Invalid company ID.' });
         }
 

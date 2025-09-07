@@ -8,7 +8,8 @@ const {
     getNotificationAnalytics,
     broadcastNotification
 } = require('../controllers/notificationController');
-const { authMiddleware, roleMiddleware } = require('../middleware/authMiddleware');
+const { authMiddleware } = require('../middleware/authMiddleware');
+const { roleMiddleware } = require('../middleware/roleMiddleware');
 
 const router = express.Router();
 

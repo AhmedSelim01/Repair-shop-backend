@@ -9,7 +9,7 @@ const logger = require('../config/logger');
 
 class EmailService {
     constructor() {
-        this.transporter = nodemailer.createTransporter({
+        this.transporter = nodemailer.createTransport({
             service: 'Gmail',
             auth: {
                 user: process.env.EMAIL_USER,

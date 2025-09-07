@@ -36,6 +36,7 @@ const BankDetailsSchema = new Schema(
         iban: {
             type: String,
             required: true,
+            unique: true,
             trim: true,
             validate: {
                 validator: (v) => /^[A-Z0-9]{15,34}$/.test(v),
@@ -45,6 +46,7 @@ const BankDetailsSchema = new Schema(
         // SWIFT Code
         swiftCode: {
             type: String,
+            unique: true,
             required: true,
             trim: true,
             validate: {
@@ -55,9 +57,5 @@ const BankDetailsSchema = new Schema(
     },
     { timestamps: true }
 );
-
-// Indexes
-BankDetailsSchema.index({ iban: 1 });
-BankDetailsSchema.index({ swiftCode: 1 });
 
 module.exports = BankDetailsSchema;

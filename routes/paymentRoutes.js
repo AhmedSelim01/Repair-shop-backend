@@ -5,9 +5,10 @@ const {
   getPaymentById,
   refundPayment,
   getPaymentAnalytics,
-  webhookHandler
+  webhookPaymentHandler
 } = require('../controllers/paymentController');
-const { authMiddleware, roleMiddleware } = require('../middleware/authMiddleware');
+const { authMiddleware} = require('../middleware/authMiddleware');
+const { roleMiddleware } = require('../middleware/roleMiddleware');
 const { validateWebhookSignature } = require('../middleware/webhookMiddleware');
 
 const router = express.Router();
@@ -343,6 +344,6 @@ router.get('/analytics', authMiddleware, roleMiddleware(['admin', 'employee']), 
  *       401:
  *         description: Invalid signature
  */
-router.post('/webhook', validateWebhookSignature, webhookHandler);
+router.post('/webhook', validateWebhookSignature, webhookPaymentHandler);
 
 module.exports = router;

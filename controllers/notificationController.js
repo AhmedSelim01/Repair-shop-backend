@@ -12,6 +12,101 @@ const logger = require('../config/logger');
 const realTimeTracker = require('../utils/realTimeTracker');
 const emailService = require('../services/emailService');
 
+// Helper Functions
+
+/**
+ * AI-powered priority detection based on message content
+ */
+function detectNotificationPriority(message, type) {
+    const urgentKeywords = ['urgent', 'critical', 'emergency', 'immediate', 'asap'];
+    const highKeywords = ['important', 'priority', 'deadline', 'overdue'];
+    
+    const messageWords = message.toLowerCase().split(/\s+/);
+    
+    if (urgentKeywords.some(keyword => messageWords.includes(keyword))) {
+        return 'urgent';
+    }
+    
+    if (highKeywords.some(keyword => messageWords.includes(keyword))) {
+        return 'high';
+    }
+    
+    // Type-based priority assignment
+    if (['security', 'payment', 'system'].includes(type)) {
+        return 'high';
+    }
+    
+    return 'medium';
+}
+
+/**
+ * Multi-channel notification delivery
+ */
+async function deliverNotification(notification) {
+    const deliveryPromises = [];
+
+    // App notification (real-time via WebSocket)
+    if (notification.channels.includes('app')) {
+        deliveryPromises.push(
+            realTimeTracker.sendToUser(notification.userId, {
+                type: 'notification',
+                data: notification
+            }).then(() => {
+                notification.deliveryStatus.app = 'delivered';
+            }).catch(error => {
+                logger.error('Real-time notification failed', {
+                    notificationId: notification._id,
+                    userId: notification.userId,
+                    error: error.message
+                });
+                notification.deliveryStatus.app = 'failed';
+            })
+        );
+    }
+
+    // Email notification
+    if (notification.channels.includes('email')) {
+        deliveryPromises.push(
+            emailService.sendNotificationEmail(notification).then(() => {
+                notification.deliveryStatus.email = 'delivered';
+            }).catch(error => {
+                logger.error('Email notification failed', {
+                    notificationId: notification._id,
+                    userId: notification.userId,
+                    error: error.message
+                });
+                notification.deliveryStatus.email = 'failed';
+            })
+        );
+    }
+
+    // SMS notification (placeholder for future implementation)
+    if (notification.channels.includes('sms')) {
+        // SMS service integration would go here
+        notification.deliveryStatus.sms = 'not_implemented';
+    }
+
+    await Promise.allSettled(deliveryPromises);
+
+    try {
+        await notification.save();
+    } catch (saveError) {
+        logger.error('Failed to save notification delivery status', {
+            notificationId: notification._id,
+            error: saveError.message
+        });
+    }
+}
+
+/**
+ * Calculate engagement rate from notification statistics
+ */
+function calculateEngagementRate(stats) {
+    const total = stats.reduce((sum, stat) => sum + stat.count, 0);
+    const read = stats.find(s => s._id === 'read')?.count || 0;
+    return total > 0 ? (read / total * 100).toFixed(2) : 0;
+}
+
 /**
  * CREATE SMART NOTIFICATION
  * AI-powered notification creation with automatic categorization and priority assignment
@@ -19,8 +114,15 @@ const emailService = require('../services/emailService');
  * @access Authenticated users
  */
 const createNotification = asyncHandler(async (req, res) => {
+    const userId= req.user.id || req.user.id;
+        if (userId !== req.body.userId && req.user.role !== 'admin') {
+        return res.status(403).json({
+            success: false,
+            message: 'Unauthorized to create notifications for other users'
+        });
+    }
+
     const { 
-        userId, 
         message, 
         type = 'general', 
         priority = 'medium',
@@ -38,6 +140,15 @@ const createNotification = asyncHandler(async (req, res) => {
         });
     }
 
+    // Validate notification channels
+    const ALLOWED_CHANNELS = ['app', 'email', 'sms'];
+    if (channels.some(ch => !ALLOWED_CHANNELS.includes(ch))) {
+        return res.status(400).json({
+            success: false,
+            message: `Invalid delivery channels. Allowed: ${ALLOWED_CHANNELS.join(', ')}`
+        });
+    }
+
     // AI-powered priority detection based on message content
     const smartPriority = detectNotificationPriority(message, type);
     
@@ -50,7 +161,7 @@ const createNotification = asyncHandler(async (req, res) => {
         metadata: {
             ...metadata,
             source: 'api',
-            createdBy: req.user?.id || 'system',
+            createdBy: req.user.id,
             userAgent: req.headers['user-agent'],
             ipAddress: req.ip
         },
@@ -102,8 +213,22 @@ const getUserNotifications = asyncHandler(async (req, res) => {
         unreadOnly = false
     } = req.query;
 
+    // Apply pagination limits
+    const MAX_LIMIT = 100;
+    const effectiveLimit = Math.min(parseInt(limit), MAX_LIMIT);
+    // Validate pagination parameters
+    const parsedPage = parseInt(page);
+    const parsedLimit = parseInt(limit);
+
+    if (isNaN(parsedPage) || isNaN(parsedLimit)) {
+    return res.status(400).json({
+        success: false,
+        message: 'Invalid pagination parameters'
+    });
+}
+
     // Build advanced query
-    const query = { userId: req.user.id };
+    const query = { userId: req.user._id };
     
     if (status) query.status = status;
     if (type) query.type = type;
@@ -120,11 +245,11 @@ const getUserNotifications = asyncHandler(async (req, res) => {
     const [notifications, stats] = await Promise.all([
         Notification.find(query)
             .sort({ priority: -1, createdAt: -1 })
-            .limit(limit * 1)
-            .skip((page - 1) * limit),
+            .limit(effectiveLimit)
+            .skip((parsedPage - 1) * effectiveLimit),
         
         Notification.aggregate([
-            { $match: { userId: req.user._id } },
+            { $match: { userId: req.user._id} },
             {
                 $group: {
                     _id: '$status',
@@ -148,10 +273,10 @@ const getUserNotifications = asyncHandler(async (req, res) => {
         data: {
             notifications,
             pagination: {
-                currentPage: parseInt(page),
-                totalPages: Math.ceil(totalNotifications / limit),
+                currentPage: parsedPage,
+                totalPages: Math.ceil(totalNotifications / effectiveLimit),
                 totalNotifications,
-                limit: parseInt(limit)
+                limit: effectiveLimit
             },
             insights
         }
@@ -242,7 +367,6 @@ const deleteNotifications = asyncHandler(async (req, res) => {
  * @access Authenticated users
  */
 const getNotificationAnalytics = asyncHandler(async (req, res) => {
-    const userId = req.user.id;
     const { timeframe = '30d' } = req.query;
 
     // Calculate date range
@@ -259,6 +383,11 @@ const getNotificationAnalytics = asyncHandler(async (req, res) => {
         case '90d':
             startDate.setDate(endDate.getDate() - 90);
             break;
+        default:
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid timeframe specified'
+            });
     }
 
     // Advanced analytics aggregation
@@ -356,6 +485,12 @@ const getNotificationAnalytics = asyncHandler(async (req, res) => {
  * @access Admin only
  */
 const broadcastNotification = asyncHandler(async (req, res) => {
+        if (req.user.role !== 'admin') {
+        return res.status(403).json({
+            success: false,
+            message: 'Admin privileges required'
+        });
+    }
     const { 
         userIds, 
         message, 
@@ -379,6 +514,14 @@ const broadcastNotification = asyncHandler(async (req, res) => {
             message: 'No target users specified'
         });
     }
+        // Broadcast size limitation
+    const MAX_BROADCAST_SIZE = 1000;
+    if (targetUserIds.length > MAX_BROADCAST_SIZE) {
+        return res.status(400).json({
+            success: false,
+            message: `Broadcast limited to ${MAX_BROADCAST_SIZE} users per request`
+        });
+    }
 
     // Create notifications for all target users
     const notifications = targetUserIds.map(userId => ({
@@ -394,106 +537,48 @@ const broadcastNotification = asyncHandler(async (req, res) => {
         channels
     }));
 
-    const createdNotifications = await Notification.insertMany(notifications);
+    try {
+        const createdNotifications = await Notification.insertMany(notifications);
 
-    // Deliver notifications in parallel
-    await Promise.allSettled(
-        createdNotifications.map(notification => deliverNotification(notification))
-    );
+        // Deliver notifications with error handling
+        await Promise.allSettled(
+            createdNotifications.map(notification => 
+                deliverNotification(notification).catch(error => {
+                    logger.error('Notification delivery failed', {
+                        notificationId: notification._id,
+                        userId: notification.userId,
+                        error: error.message
+                    });
+                })
+            )
+        );
 
-    logger.info('Broadcast notification sent', {
-        adminId: req.user.id,
-        targetCount: targetUserIds.length,
-        type,
-        priority
-    });
+        logger.info('Broadcast notification sent', {
+            adminId: req.user.id,
+            targetCount: targetUserIds.length,
+            type,
+            priority
+        });
 
-    res.status(201).json({
-        success: true,
-        message: `Broadcast notification sent to ${targetUserIds.length} users`,
-        data: {
-            broadcastId: createdNotifications[0]?.metadata?.broadcastId,
-            recipientCount: targetUserIds.length
-        }
-    });
+        res.status(201).json({
+            success: true,
+            message: `Broadcast notification sent to ${targetUserIds.length} users`,
+            data: {
+                broadcastId: createdNotifications[0]?.metadata?.broadcastId,
+                recipientCount: targetUserIds.length
+            }
+        });
+    } catch (error) {
+        logger.error('Broadcast notification failed', {
+            adminId: req.user.id,
+            error: error.message
+        });
+        res.status(500).json({
+            success: false,
+            message: 'Failed to send broadcast notifications'
+        });
+    }
 });
-
-// Helper Functions
-
-/**
- * AI-powered priority detection based on message content
- */
-function detectNotificationPriority(message, type) {
-    const urgentKeywords = ['urgent', 'critical', 'emergency', 'immediate', 'asap'];
-    const highKeywords = ['important', 'priority', 'deadline', 'overdue'];
-    
-    const messageWords = message.toLowerCase().split(/\s+/);
-    
-    if (urgentKeywords.some(keyword => messageWords.includes(keyword))) {
-        return 'urgent';
-    }
-    
-    if (highKeywords.some(keyword => messageWords.includes(keyword))) {
-        return 'high';
-    }
-    
-    // Type-based priority assignment
-    if (['security', 'payment', 'system'].includes(type)) {
-        return 'high';
-    }
-    
-    return 'medium';
-}
-
-/**
- * Multi-channel notification delivery
- */
-async function deliverNotification(notification) {
-    const deliveryPromises = [];
-
-    // App notification (real-time via WebSocket)
-    if (notification.channels.includes('app')) {
-        deliveryPromises.push(
-            realTimeTracker.sendToUser(notification.userId, {
-                type: 'notification',
-                data: notification
-            }).then(() => {
-                notification.deliveryStatus.app = 'delivered';
-            }).catch(() => {
-                notification.deliveryStatus.app = 'failed';
-            })
-        );
-    }
-
-    // Email notification
-    if (notification.channels.includes('email')) {
-        deliveryPromises.push(
-            emailService.sendNotificationEmail(notification).then(() => {
-                notification.deliveryStatus.email = 'delivered';
-            }).catch(() => {
-                notification.deliveryStatus.email = 'failed';
-            })
-        );
-    }
-
-    // SMS notification (placeholder for future implementation)
-    if (notification.channels.includes('sms')) {
-        // SMS service integration would go here
-        notification.deliveryStatus.sms = 'not_implemented';
-    }
-
-    await Promise.allSettled(deliveryPromises);
-    await notification.save();
-}
-
-/**
- * Calculate engagement rate from notification statistics
- */
-function calculateEngagementRate(stats) {
-    const total = stats.reduce((sum, stat) => sum + stat.count, 0);
-    const read = stats.find(s => s._id === 'read')?.count || 0;
-    return total > 0 ? (read / total * 100).toFixed(2) : 0;
-}
 
 module.exports = {
     createNotification,

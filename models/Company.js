@@ -38,9 +38,6 @@ const CompanySchema = new Schema(
     { timestamps: true }
 );
 
-// Indexes
-CompanySchema.index({ contactEmail: 1 }, { unique: true });
-
 // Create Company model
 const Company = model('Company', CompanySchema);
 module.exports = Company;

@@ -1,8 +1,7 @@
-
 const asyncHandler = require('express-async-handler');
 const Cart = require('../models/Cart');
+const Order = require('../models/Order');
 const StoreItem = require('../models/StoreItem');
-const User = require('../models/User');
 const logger = require('../config/logger');
 const { getRecommendations } = require('../services/recommendationService');
 
@@ -203,10 +202,18 @@ exports.clearCart = asyncHandler(async (req, res) => {
     });
 });
 
-// Checkout cart (advanced feature)
+// Checkout cart - Create order but don't process payment yet
 exports.checkoutCart = asyncHandler(async (req, res) => {
     const userId = req.user.id;
     const { paymentMethod, shippingAddress } = req.body;
+
+    // Validate payment method and shipping address
+    if (!paymentMethod || !shippingAddress) {
+        return res.status(400).json({
+            success: false,
+            message: 'Payment method and shipping address are required.'
+        });
+    }
 
     const cart = await Cart.findOne({ userId, status: 'active' })
         .populate('items.productId');
@@ -228,28 +235,41 @@ exports.checkoutCart = asyncHandler(async (req, res) => {
         }
     }
 
-    // Update stock quantities
-    for (const item of cart.items) {
-        await StoreItem.findByIdAndUpdate(
-            item.productId._id,
-            { $inc: { stock: -item.quantity } }
-        );
-    }
+    // Calculate total amount
+    const totalAmount = cart.items.reduce((sum, item) => sum + item.totalPrice, 0);
+    
+    // Create order record
+    const order = await Order.create({
+        userId,
+        items: cart.items.map(item => ({
+            productId: item.productId._id,
+            quantity: item.quantity,
+            price: item.productId.price,
+            totalPrice: item.totalPrice
+        })),
+        totalAmount,
+        paymentMethod,
+        shippingAddress,
+        status: 'pending_payment'
+    });
 
-    // Mark cart as checked out
+    // Mark cart as checked out and link to order
     cart.status = 'checked-out';
+    cart.orderId = order._id;
     await cart.save();
 
-    logger.info('Cart checked out successfully', { 
+    logger.info('Cart checked out - order created', { 
         userId, 
         cartId: cart._id, 
-        totalPrice: cart.totalPrice 
+        orderId: order._id,
+        totalAmount
     });
 
     res.status(200).json({
         success: true,
-        message: 'Checkout completed successfully.',
-        orderId: cart._id,
-        totalPrice: cart.totalPrice
+        message: 'Order created successfully. Proceed to payment.',
+        orderId: order._id,
+        totalAmount,
+        paymentRequired: true
     });
 });

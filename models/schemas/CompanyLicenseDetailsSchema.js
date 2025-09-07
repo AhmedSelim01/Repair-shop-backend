@@ -61,8 +61,4 @@ const CompanyLicenseDetailsSchema = new Schema(
     { timestamps: true }
 );
 
-// Indexes
-CompanyLicenseDetailsSchema.index({ companyLicenseNumber: 1 }, { unique: true });
-CompanyLicenseDetailsSchema.index({ TRN: 1 }, { unique: true });
-
 module.exports = CompanyLicenseDetailsSchema;

@@ -25,7 +25,8 @@ const TruckSchema = new Schema({
     owner: {
         type: Schema.Types.ObjectId,
         ref: 'User',
-        required: true
+        required: true,
+        unique: true
     },
     companyId: {
         type: Schema.Types.ObjectId,
@@ -61,10 +62,6 @@ const TruckSchema = new Schema({
 }, {
     timestamps: true
 });
-
-// Indexes
-TruckSchema.index({ licensePlate: 1 }, { unique: true });
-TruckSchema.index({ owner: 1 });
 
 // Create Truck model
 const Truck = mongoose.model('Truck', TruckSchema);

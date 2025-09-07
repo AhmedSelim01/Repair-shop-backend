@@ -9,7 +9,8 @@ const {
     getTrendingItems,
     getLowStockAlerts
 } = require('../controllers/storeItemController');
-const { authMiddleware, roleMiddleware } = require('../middleware/authMiddleware');
+const { authMiddleware } = require('../middleware/authMiddleware');
+const { roleMiddleware } = require('../middleware/roleMiddleware');
 const { validateStoreItem } = require('../middleware/requestValidation');
 
 const router = express.Router();

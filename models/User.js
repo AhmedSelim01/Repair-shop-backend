@@ -12,7 +12,7 @@ const { parsePhoneNumberWithError } = require('libphonenumber-js'); // Internati
  */
 const UserSchema = new mongoose.Schema(
   {
-    // ===== BASIC USER INFORMATION ====="git commit -m "ci: update workflow"
+    // ===== BASIC USER INFORMATION =====
     name: { 
       type: String, 
       trim: true, // Removes whitespace from beginning and end
@@ -50,11 +50,11 @@ const UserSchema = new mongoose.Schema(
             const phoneNumber = parsePhoneNumberWithError(value, 'AE');
             return phoneNumber.isValid();
           } catch (err) {
+            console.error('Phone must be a valid international number:', err);
             return false;
           }
         },
-        message: 'Phone must be a valid international number.'
-      }
+      },
     },
     password: { 
       type: String, 
@@ -104,11 +104,11 @@ const UserSchema = new mongoose.Schema(
             if (this.role === 'company' && !value) return false;
             return !value || await Company.exists({ _id: value });
           } catch (err) {
-            return false; // Return false instead of throwing an error
+            console.error('Invalid companyId or company does not exist:', err);
+            return false;
           }
         },
-        message: 'Invalid companyId or company does not exist.'
-      }
+      },
     },
 
     // Account Status
@@ -133,8 +133,6 @@ const UserSchema = new mongoose.Schema(
 );
 
 // Indexes
-UserSchema.index({ email: 1 }, { unique: true });
-UserSchema.index({ phone: 1 }, { unique: true });
 UserSchema.index({ role: 1 });
 
 /**

@@ -1,4 +1,3 @@
-// Import required dependencies for JWT authentication
 const jwt = require('jsonwebtoken'); // JWT token verification
 const asyncHandler = require('express-async-handler'); // Async error handling
 const User = require('../models/User'); // User model for database lookups

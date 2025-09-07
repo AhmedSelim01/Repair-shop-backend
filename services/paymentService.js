@@ -1,36 +1,109 @@
-
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const Payment = require('../models/Payment');
 const JobCard = require('../models/JobCard');
+const Order = require('../models/Order');
 const logger = require('../config/logger');
 
 class PaymentService {
     /**
-     * PROCESS CREDIT CARD PAYMENT
-     * Handles Stripe payment processing with comprehensive error handling
+     * PROCESS PAYMENT (Generic method that handles both Job Cards and Orders)
+     */
+    static async processPayment(paymentData) {
+        const { 
+            amount, 
+            currency = 'aed', 
+            paymentMethod, 
+            referenceType, // 'jobCard' or 'order'
+            referenceId,   // jobCardId or orderId
+            customerId, 
+            cardToken,     // for online payments
+            metadata = {} 
+        } = paymentData;
+        
+        try {
+            let paymentResult;
+            
+            if (paymentMethod === 'credit_card') {
+                paymentResult = await this.processCardPayment({
+                    amount,
+                    currency,
+                    cardToken,
+                    referenceType,
+                    referenceId,
+                    customerId,
+                    metadata
+                });
+            } else if (paymentMethod === 'cash') {
+                paymentResult = await this.processCashPayment({
+                    amount,
+                    referenceType,
+                    referenceId,
+                    customerId,
+                    receivedBy: metadata.receivedBy || 'System'
+                });
+            } else {
+                throw new Error(`Unsupported payment method: ${paymentMethod}`);
+            }
+
+            return paymentResult;
+
+        } catch (error) {
+            logger.error('Payment processing failed', {
+                error: error.message,
+                referenceType,
+                referenceId,
+                amount
+            });
+            
+            // Create failed payment record
+            await this.createFailedPaymentRecord({
+                referenceType,
+                referenceId,
+                customerId,
+                amount,
+                currency,
+                paymentMethod,
+                error: error.message
+            });
+
+            throw error;
+        }
+    }
+
+    /**
+     * PROCESS CARD PAYMENT (Supports both Job Cards and Orders)
      */
     static async processCardPayment(paymentData) {
-        const { amount, currency = 'aed', cardToken, jobCardId, customerId, metadata } = paymentData;
+        const { 
+            amount, 
+            currency = 'aed', 
+            cardToken, 
+            referenceType, 
+            referenceId, 
+            customerId, 
+            metadata 
+        } = paymentData;
         
         try {
             // Create Stripe payment intent
             const paymentIntent = await stripe.paymentIntents.create({
-                amount: Math.round(amount * 100), // Stripe expects cents
+                amount: Math.round(amount * 100),
                 currency: currency.toLowerCase(),
                 payment_method: cardToken,
                 confirm: true,
                 metadata: {
-                    jobCardId,
+                    referenceType,
+                    referenceId,
                     customerId,
                     ...metadata
                 }
             });
 
-            // Create payment record in database
+            // Create payment record
             const payment = new Payment({
-                jobCardId,
+                [referenceType === 'jobCard' ? 'jobCardId' : 'orderId']: referenceId,
                 customerId,
-                amount: amount,
+                amount,
                 grandTotal: amount,
                 currency: currency.toUpperCase(),
                 paymentMethod: 'credit_card',
@@ -49,16 +122,25 @@ class PaymentService {
 
             await payment.save();
 
-            // Update job card status if payment successful
+            // Update appropriate record based on reference type
             if (paymentIntent.status === 'succeeded') {
-                await JobCard.findByIdAndUpdate(jobCardId, {
-                    paymentStatus: 'paid',
-                    paidAt: new Date()
-                });
+                if (referenceType === 'jobCard') {
+                    await JobCard.findByIdAndUpdate(referenceId, {
+                        paymentStatus: 'paid',
+                        paidAt: new Date()
+                    });
+                } else if (referenceType === 'order') {
+                    await Order.findByIdAndUpdate(referenceId, {
+                        status: 'paid',
+                        paidAt: new Date()
+                    });
+                }
             }
 
             logger.info('Card payment processed', {
                 transactionId: payment.transactionId,
+                referenceType,
+                referenceId,
                 amount,
                 status: payment.paymentStatus
             });
@@ -72,38 +154,29 @@ class PaymentService {
         } catch (error) {
             logger.error('Card payment failed', {
                 error: error.message,
-                jobCardId,
+                referenceType,
+                referenceId,
                 amount
             });
-
-            // Create failed payment record
-            const failedPayment = new Payment({
-                jobCardId,
-                customerId,
-                amount,
-                grandTotal: amount,
-                currency: currency.toUpperCase(),
-                paymentMethod: 'credit_card',
-                paymentStatus: 'failed',
-                notes: error.message
-            });
-
-            await failedPayment.save();
-
             throw new Error(`Payment failed: ${error.message}`);
         }
     }
 
     /**
-     * PROCESS CASH PAYMENT
-     * Handles cash payments for in-person transactions
+     * PROCESS CASH PAYMENT (Supports both Job Cards and Orders)
      */
     static async processCashPayment(paymentData) {
-        const { amount, jobCardId, customerId, receivedBy } = paymentData;
+        const { 
+            amount, 
+            referenceType, 
+            referenceId, 
+            customerId, 
+            receivedBy 
+        } = paymentData;
 
         try {
             const payment = new Payment({
-                jobCardId,
+                [referenceType === 'jobCard' ? 'jobCardId' : 'orderId']: referenceId,
                 customerId,
                 amount,
                 grandTotal: amount,
@@ -116,14 +189,23 @@ class PaymentService {
 
             await payment.save();
 
-            // Update job card
-            await JobCard.findByIdAndUpdate(jobCardId, {
-                paymentStatus: 'paid',
-                paidAt: new Date()
-            });
+            // Update appropriate record
+            if (referenceType === 'jobCard') {
+                await JobCard.findByIdAndUpdate(referenceId, {
+                    paymentStatus: 'paid',
+                    paidAt: new Date()
+                });
+            } else if (referenceType === 'order') {
+                await Order.findByIdAndUpdate(referenceId, {
+                    status: 'paid',
+                    paidAt: new Date()
+                });
+            }
 
             logger.info('Cash payment recorded', {
                 transactionId: payment.transactionId,
+                referenceType,
+                referenceId,
                 amount,
                 receivedBy
             });
@@ -136,11 +218,41 @@ class PaymentService {
         } catch (error) {
             logger.error('Cash payment recording failed', {
                 error: error.message,
-                jobCardId,
+                referenceType,
+                referenceId,
                 amount
             });
             throw error;
         }
+    }
+
+    /**
+     * CREATE FAILED PAYMENT RECORD
+     */
+    static async createFailedPaymentRecord(paymentData) {
+        const { 
+            referenceType, 
+            referenceId, 
+            customerId, 
+            amount, 
+            currency, 
+            paymentMethod, 
+            error 
+        } = paymentData;
+
+        const failedPayment = new Payment({
+            [referenceType === 'jobCard' ? 'jobCardId' : 'orderId']: referenceId,
+            customerId,
+            amount,
+            grandTotal: amount,
+            currency: currency.toUpperCase(),
+            paymentMethod,
+            paymentStatus: 'failed',
+            notes: error
+        });
+
+        await failedPayment.save();
+        return failedPayment;
     }
 
     /**

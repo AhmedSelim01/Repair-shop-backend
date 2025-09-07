@@ -34,7 +34,7 @@ exports.registerUser = asyncHandler(async (req, res) => {
 
     // Basic validation - password is mandatory for all users
     if (!password) {
-        return res.status(400).json({ message: 'Password is required.' });
+        return res.status(400).json({success: false,  message: 'Password is required.' });
     }
 
     // DUPLICATE PREVENTION: Check if email or phone already exists in database
@@ -46,6 +46,7 @@ exports.registerUser = asyncHandler(async (req, res) => {
         if (duplicateUser.email === email) conflicts.push('email');
         if (duplicateUser.phone === phone) conflicts.push('phone number');
         return res.status(400).json({
+            success: false,
             message: `The following fields already exist: ${conflicts.join(', ')}.`,
         });
     }
@@ -62,6 +63,7 @@ exports.registerUser = asyncHandler(async (req, res) => {
     });
 
     res.status(201).json({
+        success: true,
         _id: user._id,
         email: user.email,
         role: user.role,
@@ -80,7 +82,7 @@ exports.loginUser = asyncHandler(async (req,res) => {
 
     // INPUT VALIDATION: Ensure both email and password are provided
     if(!email || !password) {
-        return res.status(400).json({ message: 'Email and password are required.' });
+        return res.status(400).json({ success: false, message: 'Email and password are required.' });
     }
 
     // DATABASE LOOKUP: Find user by email (case-insensitive due to schema)
@@ -91,6 +93,7 @@ exports.loginUser = asyncHandler(async (req,res) => {
     if (user && (await user.matchPassword(password))) {
         // SUCCESS: Return user data and JWT token for future requests
         res.status(200).json({ 
+            success: true,
             _id: user._id,
             name: user.name,
             email: user.email,
@@ -99,7 +102,7 @@ exports.loginUser = asyncHandler(async (req,res) => {
         });
     } else {
         // FAILURE: Generic error message for security (don't reveal if email exists)
-        res.status(400).json({ message: 'Invalid email or password.' });
+        res.status(400).json({ success: false, message: 'Invalid email or password.' });
     }
 });
 
@@ -110,26 +113,27 @@ exports.requestResetCode = asyncHandler(async (req, res) => {
     // Apply rate limiting
     try{
         await passwordResetLimiter.consume(req.ip);
-    }catch (error) {
-        return res.status(429).json({succes: false, message: 'Too many password reset requests. Please try again after 1 day.'});
+    }catch (err) {
+        console.error('The user send too many password resets in a short time.', err)
+        return res.status(429).json({success: false, message: 'Too many password reset requests. Please try again after 1 day.'});
     }
 
     if (!email && !phone) {
-        res.status(400);
-        throw new Error('Email or phone number is required.');
+        return res.status(400).json({success: false, message:'Email or phone number is required.'});
     }
 
     const user = await User.findOne({ $or: [{ email }, { phone }] });
     if (!user) {
-        res.status(404);
-        throw new Error('User not found.');
+        return res.status(200).json({success: false, message: 'If your email/phone is registered, a reset code will be send shortly.'});
     }
 
     const resetCode = crypto.randomInt(100000, 999999).toString();
     user.resetCode = resetCode;
     user.resetCodeExpires = Date.now() + 5 * 60 * 1000; // Expires in 5 minutes
     await user.save();
-    res.status(200).json({ success: true, message: `Reset code sent to ${email, phone}, Reset code: ${resetCode}.` });
+
+    console.error(`Password reset code for ${email || phone}: ${resetCode}`);
+    res.status(200).json({ success: true, message: 'If your email/phone is registered, a reset code will be send shortly.' });
 });
 
 // Password reset code verification
@@ -139,14 +143,14 @@ exports.resetPassword = asyncHandler(async (req, res) => {
     // Apply rate limiting
     try{
         await passwordResetLimiter.consume(req.ip);
-    }catch (error) {
-        return res.status(429).json({succes: false, message: 'Too many password reset requests. Please try again after 1 day.'});
+    }catch (err) {
+        console.error('The user send too many password resets in a short time.', err)
+        return res.status(429).json({success: false, message: 'Too many password reset requests. Please try again after 1 day.'});
     }
 
     const user = await User.findOne({ $or: [{ email }, { phone }] });
     if (!user || user.resetCode !== resetCode || user.resetCodeExpires < Date.now()) {
-        res.status(400);
-        throw new Error('Invalid or expired reset code.');
+        return res.status(400).json({success: false, message: 'Invalid or expired reset code.'});
     }
 
     user.password = newPassword;
