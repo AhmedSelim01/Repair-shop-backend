@@ -1,4 +1,6 @@
 // middlewares/driverValidation.js
+const Company = require('../models/Company');
+const asyncHandler = require('express-async-handler');
 exports.validateDriverTransition = asyncHandler(async (req, res, next) => {
     const { role, driverInfo, companyDetails, companyId } = req.body;
 

@@ -3,7 +3,6 @@ const asyncHandler = require('express-async-handler');
 const JobCard = require('../models/JobCard');
 const Company = require('../models/Company');
 const Truck = require('../models/Truck');
-const User = require('../models/User');
 const logger = require('../config/logger');
 
 // Create new JobCard with comprehensive validation

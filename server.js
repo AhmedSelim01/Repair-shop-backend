@@ -8,7 +8,7 @@ const cors = require('cors'); // Cross-Origin Resource Sharing
 const connectDB = require('./config/db'); // Database connection
 const logger = require('./config/logger'); // Winston logging system
 const { specs, swaggerUi } = require('./config/swagger'); // API documentation UI and Swagger configuration
-const { setupSecurity, rateLimiters } = require('./middleware/security'); // Security headers and rate limiting
+const { setupSecurity} = require('./middleware/security'); // Security headers and rate limiting
 
 // ===== IMPORT ROUTES =====
 const authRoutes = require('./routes/authRoutes'); // Authentication routes
@@ -83,7 +83,7 @@ app.get('/', (req, res) => {
 });
 
 // ===== ERROR HANDLING MIDDLEWARE =====
-const errorHandler = (err, req, res, next) => {
+const errorHandler = (err, req, res) => {
     console.error(err.stack);
 
     // Mongoose validation error

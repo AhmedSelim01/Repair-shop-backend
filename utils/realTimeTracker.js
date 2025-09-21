@@ -1,8 +1,5 @@
-
 const WebSocket = require('ws');
 const logger = require('../config/logger');
-const JobCard = require('../models/JobCard');
-const Notification = require('../models/Notification');
 
 /**
  * REAL-TIME TRACKER
@@ -52,13 +49,13 @@ class RealTimeTracker {
     }
 
     // Verify client connection
-    verifyClient(info) {
+    verifyClient() {
         // Add authentication logic here if needed
         return true;
     }
 
     // Set up connection event handlers
-    setupConnectionHandlers(ws, req) {
+    setupConnectionHandlers(ws) {
         ws.on('message', async (message) => {
             try {
                 const data = JSON.parse(message.toString());

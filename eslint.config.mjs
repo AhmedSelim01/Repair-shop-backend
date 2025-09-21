@@ -1,22 +1,24 @@
 import js from '@eslint/js';
 import globals from 'globals';
 import importPlugin from 'eslint-plugin-import';
+import jestPlugin from 'eslint-plugin-jest';
 
 export default [
   js.configs.recommended,
+  
+  // Main configuration
   {
     plugins: {
       import: importPlugin
     },
     languageOptions: {
       globals: {
-        ...globals.node,       // Replaces 'env: { node: true }'
-        ...globals.es2021,     // Replaces 'env: { es2021: true }'
-        ...globals.mocha       // For test files
+        ...globals.node,
+        ...globals.es2021,
       },
       parserOptions: {
         ecmaVersion: 'latest',
-        sourceType: 'script'   // For CommonJS support
+        sourceType: 'script'
       }
     },
     rules: {
@@ -25,14 +27,19 @@ export default [
       'no-undef': 'error'
     }
   },
-  {
+  
+  // Jest configuration (applies only to test files)
+{
     files: ['**/*.test.js'],
-    languageOptions: {
-      globals: {
-        ...globals.mocha
+    ...jestPlugin.configs['flat/recommended'],
+    settings: {
+      jest: {
+        version: 30 // Use your actual Jest version here
       }
     }
   },
+  
+  // Ignore patterns
   {
     ignores: [
       'node_modules/',

@@ -2,7 +2,6 @@
 const asyncHandler = require('express-async-handler');
 const Driver = require('../models/Driver');
 const Company = require('../models/Company');
-const User = require('../models/User');
 
 exports.createDriver = asyncHandler(async (req, res, next) => {
     try {

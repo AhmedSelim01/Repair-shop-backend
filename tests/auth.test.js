@@ -3,7 +3,6 @@
 const request = require('supertest'); // HTTP assertion library for API testing
 const app = require('../server'); // Express application instance
 const User = require('../models/User'); // User model for database operations
-const mongoose = require('mongoose'); // MongoDB ODM
 
 /**
  * AUTHENTICATION ENDPOINTS TEST SUITE

@@ -6,7 +6,7 @@
  */
 
 const axios = require('axios');
-const colors = require('colors');
+require('colors');
 
 // Test configuration
 const config = {
@@ -31,7 +31,8 @@ let testData = {
     companyId: null,
     jobCardId: null,
     paymentId: null,
-    storeItemId: null
+    storeItemId: null,
+    truckId: null
 };
 
 /**
@@ -89,7 +90,7 @@ class TestRunner {
     }
 
     static expectProperty(obj, property, message = '') {
-        if (!obj.hasOwnProperty(property)) {
+        if (!Object.prototype.hasOwnProperty.call(obj, property)) {
             throw new Error(`${message} - Missing property: ${property}`);
         }
     }
@@ -126,7 +127,8 @@ const testSuites = {
                 email: 'test@example.com',
                 phone: '+971501234567',
                 password: 'SecurePass123!',
-                role: 'truck_owner'
+                role: 'truck_owner',
+                licensePlate: 'DUB-12345'
             };
 
             const response = await TestRunner.request('POST', '/api/auth/register', userData);
@@ -154,7 +156,6 @@ const testSuites = {
             const adminData = {
                 name: 'Admin User',
                 email: 'admin@repairshop.com',
-                phone: '+971509876543',
                 password: 'AdminPass123!',
                 role: 'admin'
             };
@@ -174,6 +175,22 @@ const testSuites = {
             
             testData.adminToken = response.data.token;
         });
+
+    await TestRunner.runTest('Create Truck', async () => {
+            const truckData = {
+                licensePlate: 'DUB-12345',
+                brand: 'Mercedes',
+                owner: testData.userId,
+                status: 'pending'
+            };
+
+            const response = await TestRunner.request('POST', '/api/trucks', truckData, {
+                Authorization: `Bearer ${testData.authToken}`
+            });
+            
+            TestRunner.expect(response.status, 201, 'Truck creation should succeed');
+            testData.truckId = response.data.data.truck._id;
+        });
     },
 
     // Company Management Tests
@@ -184,27 +201,19 @@ const testSuites = {
             const companyData = {
                 companyName: 'ABC Transport LLC',
                 contactEmail: 'contact@abctransport.com',
-                phoneNumber: '+971504567890',
-                address: {
-                    street: '123 Business Bay',
-                    city: 'Dubai',
-                    state: 'Dubai',
-                    zipCode: '00000',
-                    country: 'UAE'
-                },
-                companyLicenseDetails: {
+                licenseDetails: [{
                     licenseNumber: 'DUB-123456',
                     licenseType: 'Transport',
                     issueDate: '2024-01-01',
                     expiryDate: '2025-01-01',
                     issuingAuthority: 'Dubai Municipality'
-                },
-                bankDetails: {
+                }],
+                bankDetails: [{
                     bankName: 'Emirates NBD',
                     accountNumber: '1234567890',
                     routingNumber: 'EBILAEAD',
                     accountType: 'business'
-                }
+                }]
             };
 
             const response = await TestRunner.request('POST', '/api/companies', companyData, {
@@ -222,20 +231,13 @@ const testSuites = {
 
         await TestRunner.runTest('Create Job Card', async () => {
             const jobCardData = {
-                vehicleInfo: {
-                    licensePlate: 'DUB-12345',
-                    make: 'Mercedes',
-                    model: 'Actros',
-                    year: 2020,
-                    vin: 'WDB9630351L123456',
-                    mileage: 150000
-                },
-                issueDescription: 'Engine overheating and brake system maintenance required',
-                priority: 'high',
-                estimatedCost: 2500,
-                estimatedCompletionDate: '2024-12-25',
-                serviceType: 'maintenance',
-                assignedTechnician: 'Tech001'
+                truckId: testData.truckId,
+                status: 'in-progress',
+                description: [{
+                    partName: 'Brake pads',
+                    partCost: 1500,
+                    repairFees: 500, 
+                }]
             };
 
             const response = await TestRunner.request('POST', '/api/jobcards', jobCardData, {
@@ -262,14 +264,13 @@ const testSuites = {
 
         await TestRunner.runTest('Process Cash Payment', async () => {
             const paymentData = {
-                amount: 2500,
+                amount: 2000,
                 paymentMethod: 'cash',
                 jobCardId: testData.jobCardId,
-                description: 'Engine repair and brake maintenance',
-                metadata: {
-                    receiptNumber: 'RCP-001',
-                    cashierName: 'John Smith'
-                }
+                customerId: testData.userId,
+                tax: 100,
+                discount: 0,
+                grandTotal: 2100
             };
 
             const response = await TestRunner.request('POST', '/api/payments/process', paymentData, {
@@ -286,6 +287,7 @@ const testSuites = {
             });
             
             TestRunner.expect(response.status, 200, 'Payment history should be retrieved');
+           // expect(Array.isArray(response.body.data.payment)).toBe(true);
         });
     },
 
@@ -308,6 +310,7 @@ const testSuites = {
             });
             
             TestRunner.expect(response.status, 200, 'System health should be retrieved');
+            TestRunner.expectProperty(response.data, 'status', 'Response should have status property')
         });
     },
 
@@ -319,17 +322,18 @@ const testSuites = {
             const itemData = {
                 name: 'Brake Pads - Heavy Duty',
                 description: 'Premium brake pads for heavy commercial vehicles',
-                category: 'brake_parts',
+                category: 'Brake system',
                 price: 250,
-                quantity: 50,
-                minQuantity: 10,
-                supplier: 'AutoParts UAE',
-                sku: 'BP-HD-001',
+                stock: 50,
+                lowStockThreshold: 10,
                 specifications: {
+                    partNumber: 'BP-HD-001',
+                    brand: 'PremiumParts',
+                    compatibility: [ 'Mercedes Actros', 'Volvo '] , 
                     material: 'Ceramic',
-                    compatibility: 'Mercedes Actros, Volvo FH',
-                    warranty: '12 months'
-                }
+                    warranty: '12 month'
+                },
+                createdBy: testData.userId
             };
 
             const response = await TestRunner.request('POST', '/api/store/items', itemData, {
@@ -358,9 +362,7 @@ const testSuites = {
                 await TestRunner.request('GET', '/api/admin/dashboard');
                 throw new Error('Should have thrown authorization error');
             } catch (error) {
-                if (!error.message.includes('401')) {
-                    throw error;
-                }
+                TestRunner.expect(error.message.includes('401'), true, 'should return 401 error');
             }
         });
 
@@ -373,9 +375,7 @@ const testSuites = {
                 await TestRunner.request('POST', '/api/auth/register', invalidData);
                 throw new Error('Should have thrown validation error');
             } catch (error) {
-                if (!error.message.includes('400')) {
-                    throw error;
-                }
+                TestRunner.expect(error.message.includes('400'), true, 'Should return 400 error');
             }
         });
     }
@@ -387,7 +387,7 @@ const testSuites = {
 async function runAllTests() {
     console.log('🚀 REPAIR SHOP API - COMPREHENSIVE TEST SUITE'.rainbow.bold);
     console.log(`📍 Testing against: ${config.baseUrl}`.blue);
-    console.log('=' * 60);
+    console.log('='.repeat(60));
 
     const startTime = Date.now();
 

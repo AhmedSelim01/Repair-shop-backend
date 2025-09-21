@@ -1,15 +1,14 @@
-
 /**
  * PAYMENT INTEGRATION TESTS
  * Tests payment flows, validation, and error handling
  */
-
 const request = require('supertest');
 const mongoose = require('mongoose');
 const app = require('../server');
 const User = require('../models/User');
 const JobCard = require('../models/JobCard');
 const Payment = require('../models/Payment');
+const Truck = require('../models/Truck');
 
 // Test database connection
 const connectTestDB = async () => {
@@ -20,6 +19,7 @@ const connectTestDB = async () => {
 // Clean up test data
 const cleanupTestData = async () => {
     await User.deleteMany({});
+    await Truck.deleteMany({});
     await JobCard.deleteMany({});
     await Payment.deleteMany({});
 };
@@ -27,6 +27,7 @@ const cleanupTestData = async () => {
 describe('Payment Integration Tests', () => {
     let authToken;
     let testUser;
+    let testTruck;
     let testJobCard;
 
     beforeAll(async () => {
@@ -39,7 +40,15 @@ describe('Payment Integration Tests', () => {
             email: 'test@payment.com',
             phone: '+971501234567',
             password: 'TestPass123!',
-            role: 'truck_owner'
+            role: 'truck_owner',
+            licensePlate: 'ABC123'
+        });
+
+        testTruck = await Truck.create({
+            licensePlate: 'ABC123',
+            brand: 'Mercedes',
+            owner: testUser._id,
+            status: 'bending'
         });
 
         // Login to get auth token
@@ -54,16 +63,13 @@ describe('Payment Integration Tests', () => {
 
         // Create test job card
         testJobCard = await JobCard.create({
-            customerId: testUser._id,
-            vehicleInfo: {
-                licensePlate: 'ABC123',
-                make: 'Toyota',
-                model: 'Hilux',
-                year: 2020
-            },
-            issueDescription: 'Test repair',
-            estimatedCost: 500,
-            status: 'completed'
+            truckId: testTruck._id,
+            status: 'completed',
+            description: [{
+                partName: 'Test Part',
+                partCost: '300',
+                repairFees: '200'
+            }],
         });
     });
 
@@ -116,10 +122,12 @@ describe('Payment Integration Tests', () => {
                 jobCardId: testJobCard._id
             };
 
-            await request(app)
+            const response = await request(app)
                 .post('/api/payments/process')
                 .send(paymentData)
                 .expect(401);
+
+            expect(response.body).toHaveProperty('success', false); // Jest assertion
         });
     });
 
@@ -149,10 +157,9 @@ describe('Payment Integration Tests', () => {
     describe('GET /api/payments/analytics', () => {
         it('should return payment analytics for admin', async () => {
             // Create admin user
-            const adminUser = await User.create({
+            await User.create({
                 name: 'Admin User',
                 email: 'admin@test.com',
-                phone: '+971501234568',
                 password: 'AdminPass123!',
                 role: 'admin'
             });
