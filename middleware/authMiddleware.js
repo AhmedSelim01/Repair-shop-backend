@@ -10,7 +10,7 @@ exports.authMiddleware = asyncHandler(async (req, res, next) => {
     // Check if Authorization header contains a Bearer token
     if (
         req.headers.authorization &&
-        req.headers.authorization.startsWith('Bearer')
+        req.headers.authorization.startsWith('Bearer') 
     ) {
         try {
             // Extract the token from the Authorization header

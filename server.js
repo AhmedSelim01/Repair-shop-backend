@@ -30,10 +30,11 @@ const app = express();
 
 /**
  * DATABASE CONNECTION
- * Establishes connection to MongoDB using Mongoose
- * Handles connection errors and logs success/failure
+ * Only connect in non-test environment
  */
-connectDB();
+if (process.env.NODE_ENV !== 'test') {
+    connectDB();
+}
 
 // ===== SECURITY SETUP =====
 setupSecurity(app);
@@ -83,7 +84,7 @@ app.get('/', (req, res) => {
 });
 
 // ===== ERROR HANDLING MIDDLEWARE =====
-const errorHandler = (err, req, res) => {
+const errorHandler = (err, req, next, res) => {
     console.error(err.stack);
 
     // Mongoose validation error
@@ -138,13 +139,19 @@ process.on('SIGINT', async () => {
 
 // ===== SERVER STARTUP =====
 const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
-    console.log(`❤️  Health Check: http://localhost:${PORT}/health`);
-    console.log(`⚡ WebSocket Server: ws://localhost:${PORT}/ws`);
-});
 
-// ===== WEBSOCKET SETUP =====
-const realTimeTracker = require('./utils/realTimeTracker');
-realTimeTracker.initialize(server);
+// Only start server if not in test environment
+if (process.env.NODE_ENV !== 'test') {
+    const server = app.listen(PORT, '0.0.0.0', () => {
+        console.log(`🚀 Server running on port ${PORT}`);
+        console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
+        console.log(`❤️  Health Check: http://localhost:${PORT}/health`);
+        console.log(`⚡ WebSocket Server: ws://localhost:${PORT}/ws`);
+    });
+
+    // ===== WEBSOCKET SETUP =====
+    const realTimeTracker = require('./utils/realTimeTracker');
+    realTimeTracker.initialize(server);
+}
+// Export for testing
+module.exports = app;

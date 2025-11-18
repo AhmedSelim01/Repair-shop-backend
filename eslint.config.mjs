@@ -38,6 +38,12 @@ export default [
       }
     }
   },
+
+  {
+    "env": {
+      "jest": true
+    }
+  },
   
   // Ignore patterns
   {

@@ -1,1 +1,0 @@
-{"level":"error","message":"400 - Expected double-quoted property name in JSON at position 79 - /auth/register - POST - 127.0.0.1","service":"repair-shop-api","timestamp":"2025-09-07 16:52:01"}

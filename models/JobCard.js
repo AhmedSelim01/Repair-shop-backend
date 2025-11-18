@@ -43,34 +43,33 @@ const JobCardSchema = new Schema({
         type: Date,
         default: null,
     },
-    // Driver Information (required if companyId is provided)
+    companyId: {
+        type: Schema.Types.ObjectId,
+        ref: 'user',
+        spares: true,
+        defualt: null
+    },
+
+    // Driver Information
     driverName: {
         type: String,
-        required: function () { 
-            return this.companyId !== null; 
-        },
         trim: true,
+        required: function () { 
+            return !!this.companyId; 
+        },
     },
     driverPhone: {
         type: String,
         required: function () { 
-            return this.companyId !== null; 
+            return !!this.companyId; 
         },
         validate: {
             validator: function(v) {
+                if(!v & !this.companyId) return true;
                 return /^[0-9]{10}$/.test(v);
             },
-            message: props => `${props.value} is not a valid phone number!`,
+            message: props => `${props.value} is not a valid 10-digit phone number!`,
         },
-    },
-    // Company Reference (required if driverName and driverPhone are provided)
-    companyId: {
-        type: Schema.Types.ObjectId,
-        unique: true,
-        ref: 'User',
-        required: function() {
-            return this.driverName && this.driverPhone;
-        }
     },
 }, {
     timestamps: true,
