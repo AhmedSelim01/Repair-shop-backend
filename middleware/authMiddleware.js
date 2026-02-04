@@ -1,44 +1,44 @@
-const jwt = require('jsonwebtoken'); // JWT token verification
-const asyncHandler = require('express-async-handler'); // Async error handling
-const User = require('../models/User'); // User model for database lookups
+// middleware/authMiddleware.js
+const jwt = require('jsonwebtoken');
+const asyncHandler = require('express-async-handler');
+const User = require('../models/User');
 require('dotenv').config();
 
-// Middleware to check authentication
+const JWT_SECRET = process.env.JWT_SECRET;
+
 exports.authMiddleware = asyncHandler(async (req, res, next) => {
-    let token;
+  let token;
 
-    // Check if Authorization header contains a Bearer token
-    if (
-        req.headers.authorization &&
-        req.headers.authorization.startsWith('Bearer') 
-    ) {
-        try {
-            // Extract the token from the Authorization header
-            token = req.headers.authorization.split(' ')[1];
+  // Authorization header 'Bearer <token>'
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    token = req.headers.authorization.split(' ')[1];
+  }
 
-            // Verify the token
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  // Fallback: token in cookie
+  if (!token && req.cookies && req.cookies.token) {
+    token = req.cookies.token;
+  }
 
-            // Find the user by ID from the decoded token
-            req.user = await User.findById(decoded.id).select('-password');
-            if (!req.user) {
-                res.status(401);
-                throw new Error('User not found. Unauthorized.');
-            }
+  if (!token) {
+    res.status(401);
+    return res.json({ success: false, message: 'No token provided. Unauthorized.' });
+  }
 
-            // Proceed to the next middleware or route handler
-            next();
-        } catch (error) {
-            // Handle specific JWT errors
-            const message =
-                error.name === 'TokenExpiredError'
-                    ? 'Token expired. Please log in again.'
-                    : 'Invalid token. Unauthorized.';
-            res.status(401);
-            throw new Error(message);
-        }
-    } else {
-        res.status(401);
-        throw new Error('No token provided. Unauthorized.');
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    // exclude sensitive fields
+    const user = await User.findById(decoded.id).select('-password -resetCode -resetCodeExpires');
+    if (!user) {
+      res.status(401);
+      return res.json({ success: false, message: 'User not found. Unauthorized.' });
     }
+    req.user = user;
+    next();
+  } catch (err) {
+    const message = err.name === 'TokenExpiredError'
+      ? 'Token expired. Please login again.'
+      : 'Invalid token. Unauthorized.';
+    res.status(401);
+    return res.json({ success: false, message });
+  }
 });

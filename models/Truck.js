@@ -1,68 +1,66 @@
+// models/Truck.js
 const mongoose = require('mongoose');
-const { Schema } = mongoose;
+const { Schema, model } = mongoose;
 
-const TruckSchema = new Schema({
-    // Basic info
+const TruckSchema = new Schema(
+  {
     licensePlate: {
-        type: String,
-        required: true,
-        unique: true,
-        trim: true,
-        validate: {
-            validator: function(v) {
-                return /^[A-Z0-9-]{2,11}$/.test(v);
-            },
-            message: props => `${props.value} is not a valid license plate!`
-        }
-    },
-    brand: {
-        type: String,
-        required: true,
-        trim: true
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      uppercase: true
     },
 
-    // Ownership
-    owner: {
-        type: Schema.Types.ObjectId,
-        ref: 'User',
-        required: true,
-        unique: true
-    },
-    companyId: {
-        type: Schema.Types.ObjectId,
-        ref: 'Company'
-    },
+    brand: { type: String, trim: true },
+    model: { type: String, trim: true },
+    year: { type: Number, min: 1900, max: new Date().getFullYear() },
 
-    // Repair info
-    repairHistory: [{
-        type: Schema.Types.ObjectId,
-        ref: 'JobCard'
-    }],
-    currentJobCardId: {
-        type: Schema.Types.ObjectId,
-        ref: 'JobCard'
-    },
     status: {
-        type: String,
-        enum: ['pending', 'finalized'],
-        default: 'pending'
+      type: String,
+      enum: ['pending', 'in-repair', 'quality_check', 'repaired', 'archived'],
+      default: 'pending'
     },
-    repairMilestones: [
-        {
-            stage: {
-                type: String,
-                required: true,
-                enum: ['inspection', 'repair in progress', 'quality check', 'ready for pick-up']
-            },
-            completedAt: {
-                type: Date
-            }
-        }
-    ]
-}, {
-    timestamps: true
-});
 
-// Create Truck model
-const Truck = mongoose.model('Truck', TruckSchema);
-module.exports = Truck;
+    owner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Company',
+      default: null
+    },
+
+    assignedDriver: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Driver',
+      default: null
+    },
+
+    jobCards: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'JobCard'
+    }],
+
+    repairMilestones: [
+      {
+        stage: {
+          type: String,
+          enum: [
+            'inspection',
+            'repair in progress',
+            'quality check',
+            'ready for pick-up'
+          ]
+        },
+        completedAt: { type: Date, default: Date.now }
+      }
+    ]
+  },
+  { timestamps: true }
+);
+
+module.exports = model('Truck', TruckSchema);

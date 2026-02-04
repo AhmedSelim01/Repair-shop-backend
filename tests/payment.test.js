@@ -1,7 +1,3 @@
-/**
- * PAYMENT INTEGRATION TESTS
- * Tests payment flows, validation, and error handling
- */
 const request = require('supertest');
 const app = require('../server');
 const User = require('../models/User');
@@ -35,19 +31,13 @@ describe('Payment Integration Tests', () => {
             status: 'pending'
         });
 
-        // Create test JobCard
+        // Create JobCard
         testJobCard = await JobCard.create({
             truckId: testTruck._id,
-            customerId: testUser._id,
+            truckOwnerId: testUser._id,
+            description: 'Test repair job',
             status: 'completed',
-            estimatedCost: 500,
-            description: [
-                {
-                    partName: 'Test Part',
-                    partCost: 300,
-                    repairFee: 200
-                }
-            ]
+            totalCost: 500
         });
 
         // Create admin user
@@ -84,7 +74,7 @@ describe('Payment Integration Tests', () => {
     });
 
     describe('POST /api/payments/jobcard', () => {
-        it('should process job card payment successfully', async () => {
+        it('should process job card payment successfully and calculate VAT', async () => {
             const paymentData = {
                 jobCardId: testJobCard._id.toString(),
                 amount: 500,
@@ -101,30 +91,31 @@ describe('Payment Integration Tests', () => {
             console.log('Payment response:', response.status, response.body);
 
             expect([200, 201]).toContain(response.status);
-            if (response.body.success !== undefined) {
-                expect(response.body.success).toBe(true);
-            }
+            expect(response.body.success).toBe(true);
+
+            // ✅ Check VAT calculation
+            const subtotal = response.body.data.subtotal;
+            const vat = response.body.data.vat;
+            const discount = response.body.data.discount || 0;
+            const grandTotal = response.body.data.grandTotal;
+
+            expect(vat).toBeCloseTo(subtotal * (parseFloat(process.env.VAT_PERCENTAGE) / 100));
+            expect(grandTotal).toBeCloseTo(subtotal + vat - discount);
         });
 
         it('should handle invalid payment data', async () => {
-            const invalidData = {
-                jobCardId: 'invalid-id',
-                amount: -10
-            };
+            const invalidData = { jobCardId: 'invalid-id', amount: -10 };
 
             const response = await request(app)
                 .post('/api/payments/jobcard')
                 .set('Authorization', `Bearer ${authToken}`)
                 .send(invalidData);
 
-            expect([400, 404, 500]).toContain(response.status);
+            expect([400, 404]).toContain(response.status);
         });
 
         it('should require authentication', async () => {
-            const paymentData = {
-                jobCardId: testJobCard._id.toString(),
-                amount: 500
-            };
+            const paymentData = { jobCardId: testJobCard._id.toString(), amount: 500 };
 
             const response = await request(app)
                 .post('/api/payments/jobcard')

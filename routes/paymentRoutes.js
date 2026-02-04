@@ -3,6 +3,7 @@ const express = require('express');
 const {
   processJobCardPayment,
   processOrderPayment,
+  processInvoicePayment,
   getPaymentHistory,
   getPaymentById,
   refundPayment,
@@ -32,6 +33,13 @@ router.post(
   '/order',
   authMiddleware,
   processOrderPayment
+);
+
+// Invoice payment
+router.post(
+  '/invoice',
+  authMiddleware,
+  processInvoicePayment
 );
 
 /* -------------------------------------------
@@ -81,5 +89,4 @@ router.get(
   authMiddleware,
   getPaymentById
 );
-
 module.exports = router;

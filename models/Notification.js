@@ -15,35 +15,18 @@ const NotificationSchema = new Schema({
         type: String,
         enum: ['unread', 'read'],
         default: 'unread',
-    },
-    date: {
-        type: Date,
-        default: Date.now,
-    },
+    }
 }, {
     timestamps: true,
 });
 
+// Instance method
+NotificationSchema.methods.markAsRead = async function () {
+    this.status = 'read';
+    await this.save();
+    return this;
+};
+
 const Notification = mongoose.model('Notification', NotificationSchema);
-
-// Marks a notification as read
-Notification.markAsRead = async (notificationId) => {
-    const notification = await Notification.findById(notificationId);
-    if (!notification) throw new Error('Notification not found');
-    
-    notification.status = 'read';
-    await notification.save();
-    return notification;
-};
-
-// Creates a new notification for a user
-Notification.createNotification = async (userId, message) => {
-    const newNotification = new Notification({
-        userId,
-        message,
-    });
-    await newNotification.save();
-    return newNotification;
-};
 
 module.exports = Notification;

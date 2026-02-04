@@ -1,240 +1,220 @@
-// Import required dependencies
+// controllers/companyController.js
 const asyncHandler = require('express-async-handler');
-const Company = require('../models/Company');
 const mongoose = require('mongoose');
+const Company = require('../models/Company');
+const Driver = require('../models/Driver');
+const Truck = require('../models/Truck');
 
-/**
- * CREATE COMPANY ENDPOINT
- * Registers a new company in the system with initial profile status
- * Validates uniqueness and provides next steps for profile completion
- */
-exports.createCompany = asyncHandler(async(req, res, next) => {
-    try {
-        // Extract required fields from request body
-        const { companyName, contactEmail } = req.body;
+function isValidObjectId(id) {
+  return mongoose.Types.ObjectId.isValid(id);
+}
 
-        // Note: This ID validation appears to be misplaced - should be removed
-        if (!mongoose.Types.ObjectId.isValid(Company._id)) {
-            return res.status(400).json({ success: false, message: 'Invalid company ID.' });
-        }
+function dedupeIds(arr = []) {
+  return Array.from(new Set(arr.map(a => a?.toString()))).map(x => mongoose.Types.ObjectId(x));
+}
 
-        // INPUT VALIDATION: Ensure required fields are provided
-        if (!companyName || !contactEmail) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Company name and contact email are required.' 
-            });
-        }
+exports.createCompany = asyncHandler(async (req, res, next) => {
+  const { companyName, contactEmail } = req.body;
 
-        // Check if the company already exists
-        const existingCompany = await Company.findOne({ 
-            $or: [{ companyName }, { contactEmail }] 
-        });
+  if (!companyName || !contactEmail) {
+    return res.status(400).json({ success: false, message: 'companyName and contactEmail are required' });
+  }
 
-        if (existingCompany) {
-            return res.status(400).json({
-                success: false,
-                message: 'A company with this name or email already exists.',
-            });
-        }
+  const existing = await Company.findOne({ contactEmail });
+  if (existing) {
+    return res.status(409).json({ success: false, message: 'A company with that contactEmail already exists' });
+  }
 
-        // Create a new company with initial status
-        const newCompany = await Company.create({
-            companyName,
-            contactEmail,
-            profileStatus: 'initial',
-            bankDetails: [],
-            licenseDetails: [],
-            ownerDetails: [],
-            drivers: [],
-            associatedTrucks: []
-        });
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const [company] = await Company.create([{
+      companyName,
+      contactEmail,
+      profileStatus: 'initial',
+      bankDetails: [],
+      licenseDetails: [],
+      ownerDetails: [],
+      drivers: [],
+      associatedTrucks: []
+    }], { session });
 
-        res.status(201).json({
-            success: true,
-            message: 'Company registered successfully. Please complete your profile.',
-            company: newCompany,
-            nextSteps: {
-                requiredFields: ['licenseDetails', 'ownerDetails'],
-                endpoint: `/api/v1/companies/${newCompany._id}/complete-profile`
-            }
-        });
-    } catch (error) {
-        next(error);
-    }
+    await session.commitTransaction();
+    session.endSession();
+
+    return res.status(201).json({
+      success: true,
+      message: 'Company created. Complete profile to activate.',
+      company,
+      nextSteps: {
+        requiredFields: ['licenseDetails', 'ownerDetails'],
+        endpoint: `/api/v1/companies/${company._id}/complete-profile`
+      }
+    });
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    next(err);
+  }
 });
 
-exports.completeProfile = asyncHandler(async(req, res, next) => {
-    try {
-        const { id } = req.params; 
-        const { bankDetails, licenseDetails, ownerDetails } = req.body;
+exports.completeProfile = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const { bankDetails, licenseDetails, ownerDetails, replace = false } = req.body;
 
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return res.status(400).json({ success: false, message: 'Invalid company ID.' });
-        }
+  if (!isValidObjectId(id)) return res.status(400).json({ success: false, message: 'Invalid company id' });
+  const company = await Company.findById(id);
+  if (!company) return res.status(404).json({ success: false, message: 'Company not found' });
 
-        const company = await Company.findById(id);
-        if(!company) {
-            return res.status(404).json({ success: false, message: 'Company not found.' });
-        }
-        // Validate required fields for profile completion
-        if (!licenseDetails || !ownerDetails) {
-            return res.status(400).json({ success: false, message: 'License details and owner details are required for profile completion.',});
-        }
+  if (!licenseDetails || !ownerDetails) return res.status(400).json({ success: false, message: 'licenseDetails and ownerDetails are required' });
 
-        // Update company profile
-        company.licenseDetails = licenseDetails;
-        company.ownerDetails = ownerDetails;
-        if (bankDetails) company.bankDetails = bankDetails;
-        
-        // Update profile status
-        company.profileStatus = bankDetails ? 'complete' : 'basic';
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    if (replace) {
+      company.licenseDetails = licenseDetails;
+      company.ownerDetails = ownerDetails;
+      if (bankDetails) company.bankDetails = bankDetails;
+    } else {
+      const licenseMap = new Map(company.licenseDetails.map(l => [l.companyLicenseNumber?.toString() || JSON.stringify(l), l]));
+      licenseDetails.forEach(l => {
+        const key = l.companyLicenseNumber?.toString() || JSON.stringify(l);
+        licenseMap.set(key, l);
+      });
+      company.licenseDetails = Array.from(licenseMap.values());
 
-        const updatedCompany = await company.save();
+      const ownerMap = new Map(company.ownerDetails.map(o => [
+        o.ownerIdNumber?.toString() || o.ownerEmail?.toString() || JSON.stringify(o), o
+      ]));
+      ownerDetails.forEach(o => {
+        const key = o.ownerIdNumber?.toString() || o.ownerEmail?.toString() || JSON.stringify(o);
+        ownerMap.set(key, o);
+      });
+      company.ownerDetails = Array.from(ownerMap.values());
 
-        res.status(200).json({success: true,
-            message: `Company profile ${company.profileStatus === 'complete' ? 'completed' : 'updated'} successfully.`,
-            company: updatedCompany,
-            nextSteps: company.profileStatus === 'basic' ? {
-                optionalFields: ['bankDetails'],
-                endpoint: `/api/v1/companies/${id}/complete-profile`
-            } : null
+      if (bankDetails) {
+        const bankMap = new Map(company.bankDetails.map(b => [b.iban?.toString() || JSON.stringify(b), b]));
+        bankDetails.forEach(b => {
+          const key = b.iban?.toString() || JSON.stringify(b);
+          bankMap.set(key, b);
         });
-    } catch (error) {
-        next(error);
+        company.bankDetails = Array.from(bankMap.values());
+      }
     }
+
+    company.profileStatus = company.bankDetails.length && company.licenseDetails.length && company.ownerDetails.length ? 'complete' : 'basic';
+
+    const updated = await company.save({ session });
+    await session.commitTransaction();
+    session.endSession();
+
+    return res.status(200).json({ success: true, message: `Company profile ${company.profileStatus === 'complete' ? 'completed' : 'updated'} successfully.`, company: updated });
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    next(err);
+  }
 });
 
 exports.addAssociations = asyncHandler(async (req, res, next) => {
-    try {
-        const { id } = req.params;
-        const { drivers, associatedTrucks } = req.body;
+  const { id } = req.params;
+  let { drivers = [], associatedTrucks = [] } = req.body;
 
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return res.status(400).json({ success: false, message: 'Invalid company ID.' });
-        }
+  if (!isValidObjectId(id)) return res.status(400).json({ success: false, message: 'Invalid company id' });
+  if (!Array.isArray(drivers)) drivers = drivers ? [drivers] : [];
+  if (!Array.isArray(associatedTrucks)) associatedTrucks = associatedTrucks ? [associatedTrucks] : [];
+  if (!drivers.length && !associatedTrucks.length) return res.status(400).json({ success: false, message: 'Provide drivers or associatedTrucks to add' });
 
-        const company = await Company.findById(id);
-        
-        if (!company) {
-            return res.status(404).json({
-                success: false,
-                message: 'Company not found.'
-            });
-        }
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const company = await Company.findById(id).session(session);
+    if (!company) throw new Error('Company not found');
 
-        if (!drivers && !associatedTrucks) {
-            return res.status(400).json({
-                success: false,
-                message: 'Driver information or truck details are required.'
-            });
-        }
+    const existingDrivers = await Driver.find({ _id: { $in: drivers } }).session(session);
+    const existingTrucks = await Truck.find({ _id: { $in: associatedTrucks } }).session(session);
 
-        // Add new associations if provided
-        if (drivers && Array.isArray(drivers)) {
-            company.drivers.push(...drivers);
-        }
+    const driverIds = dedupeIds([...company.drivers, ...existingDrivers.map(d => d._id)]);
+    company.drivers = driverIds;
+    await Driver.updateMany({ _id: { $in: existingDrivers.map(d => d._id) } }, { associatedCompany: company._id }, { session });
 
-        if (associatedTrucks && Array.isArray(associatedTrucks)) {
-            company.associatedTrucks.push(...associatedTrucks);
-        }
+    const truckIds = dedupeIds([...company.associatedTrucks, ...existingTrucks.map(t => t._id)]);
+    company.associatedTrucks = truckIds;
+    await Truck.updateMany({ _id: { $in: existingTrucks.map(t => t._id) } }, { companyId: company._id }, { session });
 
-        await company.save();
+    await company.save({ session });
+    await session.commitTransaction();
+    session.endSession();
 
-        return res.status(200).json({
-            success: true,
-            message: 'Associations added successfully.',
-            company: company
-        });
-    } catch (error) {
-        next(error);
-    }
+    return res.status(200).json({ success: true, message: 'Associations added', company });
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    next(err);
+  }
 });
 
 exports.updateCompany = asyncHandler(async (req, res, next) => {
-    try {
-        const { id } = req.params;
-        const updates = req.body;
+  const { id } = req.params;
+  const updates = req.body || {};
 
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return res.status(400).json({ success: false, message: 'Invalid company ID.' });
-        }
-        
-        const company = await Company.findById(id);
-        if (!company) {
-            return res.status(404).json({ success: false, message: 'Company not found.' });
-        }
+  if (!isValidObjectId(id)) return res.status(400).json({ success: false, message: 'Invalid company id' });
+  const company = await Company.findById(id);
+  if (!company) return res.status(404).json({ success: false, message: 'Company not found' });
 
-        // If company profile isn't complete, certain updates should go through complete-profile
-        if (company.profileStatus !== 'complete' && 
-            (updates.licenseDetails || updates.ownerDetails || updates.bankDetails)) {
-            return res.status(400).json({ success: false,
-                message: 'Please use the complete-profile endpoint to update profile details.',
-                endpoint: `/api/v1/companies/${id}/complete-profile`
-            });
-        }
+  if (company.profileStatus !== 'complete' && (updates.licenseDetails || updates.ownerDetails || updates.bankDetails)) {
+    return res.status(400).json({ success: false, message: 'Use complete-profile endpoint to update profile details', endpoint: `/api/v1/companies/${id}/complete-profile` });
+  }
 
-        // Allow updating only non-profile fields
-        ['companyName', 'contactEmail', 'associatedTrucks'].forEach(field => {
-            if (updates[field]) company[field] = updates[field];
-        });
+  if (updates.contactEmail && updates.contactEmail !== company.contactEmail) {
+    const dup = await Company.findOne({ contactEmail: updates.contactEmail });
+    if (dup) return res.status(409).json({ success: false, message: 'contactEmail already in use' });
+    company.contactEmail = updates.contactEmail;
+  }
 
-        const updatedCompany = await company.save();
+  if (updates.companyName) company.companyName = updates.companyName;
+  if (Array.isArray(updates.drivers) && updates.drivers.length) company.drivers = dedupeIds([...company.drivers, ...updates.drivers]);
+  if (Array.isArray(updates.associatedTrucks) && updates.associatedTrucks.length) company.associatedTrucks = dedupeIds([...company.associatedTrucks, ...updates.associatedTrucks]);
 
-        res.status(200).json({ success: true, message: 'Company updated successfully.', company: updatedCompany });
-    } catch (error) {
-        next(error);
-    }
+  const saved = await company.save();
+  return res.status(200).json({ success: true, message: 'Company updated', company: saved });
 });
 
-exports.getAllCompanies = asyncHandler(async(res, next) => {
-    try {
+exports.getAllCompanies = asyncHandler(async (req, res, next) => {
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(100, parseInt(req.query.limit, 10) || 20);
 
-        if (!mongoose.Types.ObjectId.isValid(Company._id)) {
-            return res.status(400).json({ success: false, message: 'Invalid company ID.' });
-        }
+  const total = await Company.countDocuments();
+  const companies = await Company.find()
+    .populate('associatedTrucks drivers')
+    .skip((page - 1) * limit)
+    .limit(limit)
+    .sort({ createdAt: -1 });
 
-        const companies = await Company.find().populate('associatedTrucks drivers');
-        res.status(200).json({ success: true, companies });
-    } catch (error) {
-        next(error);
-    }
+  return res.status(200).json({
+    success: true,
+    metadata: { total, page, totalPages: Math.ceil(total / limit), limit },
+    companies
+  });
 });
 
-exports.getCompanyById = asyncHandler(async(req, res, next) => {
-    try {
-        const { id } = req.params;
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return res.status(400).json({ success: false, message: 'Invalid company ID.' });
-        }
-        const company = await Company.findById(id).populate('associatedTrucks drivers');
-        if(!company) {
-            return res.status(404).json({ success: false, message: 'Company not found.' })
-        }
-        res.status(200).json({ success: true, company })
-    } catch (error) {
-        next(error);
-    }
+exports.getCompanyById = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  if (!isValidObjectId(id)) return res.status(400).json({ success: false, message: 'Invalid company id' });
+
+  const company = await Company.findById(id).populate('associatedTrucks drivers');
+  if (!company) return res.status(404).json({ success: false, message: 'Company not found' });
+
+  return res.status(200).json({ success: true, company });
 });
 
 exports.deleteCompany = asyncHandler(async (req, res, next) => {
-    try {
-        const { id } = req.params;
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return res.status(400).json({ success: false, message: 'Invalid company ID.' });
-        }
+  const { id } = req.params;
+  if (!isValidObjectId(id)) return res.status(400).json({ success: false, message: 'Invalid company id' });
 
-        // Find the company by ID
-        const company = await Company.findById(id);
-        if (!company) {
-            return res.status(404).json({ success: false, message: 'Company not found.' });
-        }
+  const company = await Company.findById(id);
+  if (!company) return res.status(404).json({ success: false, message: 'Company not found' });
 
-        // Remove the company
-        await company.deleteOne();
-
-        res.status(200).json({ success: true, message: 'Company deleted successfully.'});
-    } catch (error) {
-        next(error);
-    }
+  await company.deleteOne();
+  return res.status(200).json({ success: true, message: 'Company deleted' });
 });

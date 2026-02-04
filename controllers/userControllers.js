@@ -1,103 +1,160 @@
+// controllers/userController.js
 const asyncHandler = require('express-async-handler');
+const mongoose = require('mongoose');
 const User = require('../models/User');
-const { default: mongoose } = require('mongoose');
+const Truck = require('../models/Truck');
+const Company = require('../models/Company');
 
-// Get all users
+/**
+ * GET /api/users
+ * Admins & employees only
+ */
 exports.getAllUsers = asyncHandler(async (req, res) => {
-    const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 10;
+  const requester = req.user;
+  if (!['admin', 'employee'].includes(requester.role)) {
+    return res.status(403).json({ success: false, message: 'Forbidden' });
+  }
 
-    // Validate query params
-    if (page <= 0 || limit <= 0) {
-        res.status(400);
-        throw new Error('Page and limit must be positive numbers.');
-    }
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, parseInt(req.query.limit) || 20);
+  const search = req.query.search?.trim();
+  const roleFilter = req.query.role;
 
-    const totalUsers = await User.countDocuments();
-    const users = await User.find()
-        .select('-password')
-        .skip((page - 1) * limit)
-        .limit(limit);
+  const query = { isDeleted: false };
+  if (search) {
+    const re = new RegExp(search, 'i');
+    query.$or = [{ name: re }, { email: re }, { phone: re }];
+  }
+  if (roleFilter) query.role = roleFilter;
 
-    res.status(200).json({
-        success: true,
-        metadata: {
-            total: totalUsers,
-            currentPage: page,
-            totalPages: Math.ceil(totalUsers / limit),
-        },
-        data: users,
-    });
+  const total = await User.countDocuments(query);
+  const users = await User.find(query)
+    .select('-password -resetCode -resetCodeExpires')
+    .populate('companyId', 'companyName') // companyName kept per your choice
+    .populate('trucks', 'licensePlate brand model')
+    .sort({ createdAt: -1 })
+    .skip((page - 1) * limit)
+    .limit(limit);
+
+  res.status(200).json({
+    success: true,
+    metadata: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit)
+    },
+    data: users.map(u => u.getPublicProfile ? u.getPublicProfile() : u)
+  });
 });
 
-// Get user by ID
+/**
+ * GET /api/users/me
+ * Authenticated user gets own public profile
+ */
+exports.getMe = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id)
+    .select('-password -resetCode -resetCodeExpires')
+    .populate('companyId', 'companyName')
+    .populate('trucks', 'licensePlate brand model');
+
+  if (!user || user.isDeleted) return res.status(404).json({ success: false, message: 'User not found' });
+
+  return res.status(200).json({ success: true, data: user.getPublicProfile() });
+});
+
+/**
+ * GET /api/users/:id
+ */
 exports.getUserById = asyncHandler(async (req, res) => {
-    const { id } = req.params;
+  const { id } = req.params;
+  const requester = req.user;
 
-    // Validate ID
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        res.status(400);
-        throw new Error('Invalid user ID format.');
-    }
+  if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: 'Invalid user ID' });
 
-    const user = await User.findById(id).select('-password');
-    if (!user) {
-        res.status(404);
-        throw new Error('User not found.');
-    }
+  const user = await User.findById(id)
+    .select('-password -resetCode -resetCodeExpires')
+    .populate('companyId', 'companyName')
+    .populate('trucks', 'licensePlate brand model');
 
-    res.status(200).json({ success: true, data: user });
+  if (!user || user.isDeleted) return res.status(404).json({ success: false, message: 'User not found' });
+
+  // Authorization rules:
+  const isAdmin = requester.role === 'admin';
+  const isSelf = requester._id.equals(user._id);
+  const isCompanyPeer = requester.role === 'company' && requester.companyId?.toString() === user.companyId?.toString();
+
+  if (isAdmin || isSelf || isCompanyPeer) {
+    return res.status(200).json({ success: true, data: user.getPublicProfile() });
+  }
+
+  if (requester.role === 'employee') {
+    return res.status(200).json({
+      success: true,
+      data: {
+        _id: user._id,
+        name: user.name,
+        role: user.role,
+        trucks: user.trucks,
+        companyId: user.companyId
+      }
+    });
+  }
+
+  return res.status(403).json({ success: false, message: 'Forbidden' });
 });
 
-// Update user
+/**
+ * PUT /api/users/:id
+ * Only admin or the user themself.
+ * Block changing sensitive fields unless admin.
+ */
 exports.updateUser = asyncHandler(async (req, res) => {
-    const { id } = req.params;
+  const { id } = req.params;
+  const requester = req.user;
+  const payload = { ...req.body };
 
-    // Validate ID
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        res.status(400);
-        throw new Error('Invalid user ID format.');
-    }
+  if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: 'Invalid user ID' });
 
-    const updates = { ...req.body };
+  const user = await User.findById(id);
+  if (!user || user.isDeleted) return res.status(404).json({ success: false, message: 'User not found' });
 
-    // Restrict sensitive fields
-    const restrictedFields = ['role', 'password', 'resetCode', 'resetCodeExpires'];
-    restrictedFields.forEach(field => delete updates[field]);
+  if (!(requester.role === 'admin' || requester._id.equals(user._id))) return res.status(403).json({ success: false, message: 'Forbidden' });
 
-    const updatedUser = await User.findByIdAndUpdate(id, updates, { new: true }).select('-password');
-    if (!updatedUser) {
-        res.status(404);
-        throw new Error('User not found.');
-    }
+  // Remove forbidden fields for non-admins
+  delete payload.resetCode;
+  delete payload.resetCodeExpires;
+  if (payload.role && requester.role !== 'admin') delete payload.role;
 
-    res.status(200).json({
-        success: true,
-        message: 'User updated successfully.',
-        data: updatedUser,
-    });
+  // Block overreaching updates (only admin can change these)
+  if (requester.role !== 'admin') {
+    delete payload.isActive;
+    delete payload.isDeleted;
+    delete payload.trucks;
+    delete payload.companyId;
+  }
+
+  Object.assign(user, payload);
+  await user.save();
+
+  res.status(200).json({ success: true, message: 'User updated', data: user.getPublicProfile() });
 });
 
-// Delete user
+/**
+ * DELETE /api/users/:id (soft delete)
+ */
 exports.deleteUser = asyncHandler(async (req, res) => {
-    const { id } = req.params;
+  const { id } = req.params;
+  const requester = req.user;
 
-    // Validate ID
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        res.status(400);
-        throw new Error('Invalid user ID format.');
-    }
+  if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: 'Invalid user ID' });
+  if (requester.role !== 'admin') return res.status(403).json({ success: false, message: 'Forbidden' });
 
-    const deletedUser = await User.findByIdAndDelete(id);
-    if (!deletedUser) {
-        res.status(404);
-        throw new Error('User not found.');
-    }
+  const user = await User.findById(id);
+  if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    res.status(200).json({
-        success: true,
-        message: 'User deleted successfully.',
-        data: deletedUser,
-    });
-    console.log(`User deleted: ${deletedUser._id}`);
+  user.isDeleted = true;
+  await user.save();
+
+  res.status(200).json({ success: true, message: 'User soft-deleted', data: { _id: user._id } });
 });

@@ -6,6 +6,7 @@ const CartSchema = new mongoose.Schema({
         ref: 'User',
         required: true,
     },
+
     items: [{
         productId: {
             type: mongoose.Schema.Types.ObjectId,
@@ -17,41 +18,50 @@ const CartSchema = new mongoose.Schema({
             required: true,
             min: 1,
         },
+        // This is the subtotal for THIS item
         totalPrice: {
             type: Number,
             required: true,
+            min: 0
         },
     }],
+
     status: {
         type: String,
         enum: ['active', 'checked-out', 'cancelled'],
         default: 'active',
     },
+
+    // Grand total of the cart
     totalPrice: {
         type: Number,
         default: 0,
         min: 0,
     },
+
 }, {
     timestamps: true,
 });
 
+/**
+ * Auto-calculate grand total before saving.
+ */
 CartSchema.pre('save', function (next) {
-    let total = 0;
-    this.items.forEach(item => {
-        total += item.totalPrice;
-    });
-    this.totalPrice = total;
+    this.totalPrice = this.items.reduce((sum, item) => sum + item.totalPrice, 0);
     next();
 });
 
-// Static method: Finds the active cart for a user
-CartSchema.statics.getActiveCart = async function(userId) {
-    return await this.findOne({ userId, status: 'active' });
+/**
+ * Static: Get user's active cart
+ */
+CartSchema.statics.getActiveCart = function (userId) {
+    return this.findOne({ userId, status: 'active' });
 };
 
-// Instance method: Checkout and update the cart's status
-CartSchema.methods.checkoutCart = async function() {
+/**
+ * Instance: Mark this cart as checked out
+ */
+CartSchema.methods.checkoutCart = async function () {
     this.status = 'checked-out';
     await this.save();
     return this;

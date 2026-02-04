@@ -1,23 +1,28 @@
 const express = require('express');
-const { createJobCard, getAllJobCards, getJobCardById, updateJobCard, deleteJobCard } = require('../controllers/jobCardController');
-const { authMiddleware } = require('../middleware/authMiddleware');
-const {roleMiddleware} = require('../middleware/roleMiddleware');
-
 const router = express.Router();
+const { authMiddleware } = require('../middleware/authMiddleware');
+const { roleMiddleware } = require('../middleware/roleMiddleware');
 
-// Create a new job card
-router.post('/', authMiddleware, roleMiddleware(['admin', 'employee']), createJobCard);
+const {
+  createJobCard,
+  getAllJobCards,
+  getJobCardById,
+  updateJobCard,
+  deleteJobCard,
+  updateJobCardStatus,
+} = require('../controllers/jobCardController');
 
-// Get all job cards
-router.get('/', authMiddleware, roleMiddleware(['admin', 'employee']), getAllJobCards);
-
-// Get job card by ID
-router.get('/:id', authMiddleware, roleMiddleware(['admin', 'employee']), getJobCardById);
-
-// Update job card
-router.put('/:id', authMiddleware, roleMiddleware(['admin', 'employee']), updateJobCard);
-
-// Delete job card
-router.delete('/:id', authMiddleware, roleMiddleware(['admin']), deleteJobCard);
+// CREATE
+router.post('/',authMiddleware,roleMiddleware(['admin', 'employee']),createJobCard);
+// GET ALL
+router.get('/',authMiddleware,roleMiddleware(['admin', 'employee']),getAllJobCards);
+// GET ONE
+router.get('/:id',authMiddleware,roleMiddleware(['admin', 'employee']),getJobCardById);
+// UPDATE DETAILS
+router.put('/:id',authMiddleware,roleMiddleware(['admin', 'employee']),updateJobCard);
+// DELETE
+router.delete('/:id',authMiddleware,roleMiddleware(['admin']),deleteJobCard);
+// STATUS UPDATE
+router.patch('/:id/status',authMiddleware,roleMiddleware(['admin', 'employee']),updateJobCardStatus);
 
 module.exports = router;

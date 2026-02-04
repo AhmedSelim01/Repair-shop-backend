@@ -1,20 +1,18 @@
+// server.js
 const dotenv = require('dotenv');
 dotenv.config();
 
-// ===== IMPORT CORE DEPENDENCIES =====
-const express = require('express'); // Web framework
-const mongoose = require('mongoose'); // MongoDB ODM
-const cors = require('cors'); // Cross-Origin Resource Sharing
-const connectDB = require('./config/db'); // Database connection
-const logger = require('./config/logger'); // Winston logging system
-const { specs, swaggerUi } = require('./config/swagger'); // API documentation UI and Swagger configuration
-const { setupSecurity} = require('./middleware/security'); // Security headers and rate limiting
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const connectDB = require('./config/db');
+const logger = require('./config/logger');
+const { specs, swaggerUi } = require('./config/swagger');
+const { setupSecurity } = require('./middleware/security');
 
-// ===== IMPORT ROUTES =====
-const authRoutes = require('./routes/authRoutes'); // Authentication routes
-const userRoutes = require('./routes/userRoutes'); // User-related routes
+const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
 const companyRoutes = require('./routes/companyRoutes');
-const roleTransitionRoutes = require('./routes/roleTransitionRoutes'); // Role transition routes
 const driverRoutes = require('./routes/driverRoutes');
 const truckRoutes = require('./routes/truckRoutes');
 const jobCardRoutes = require('./routes/jobCardRoutes');
@@ -24,24 +22,17 @@ const cartRoutes = require('./routes/cartRoutes');
 const adminPanelRoutes = require('./routes/adminPanelRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
+const upgradeRoutes = require('./routes/updateRoutes');
 
-// Initialize Express application
 const app = express();
 
-/**
- * DATABASE CONNECTION
- * Only connect in non-test environment
- */
 if (process.env.NODE_ENV !== 'test') {
     connectDB();
 }
-
-// ===== SECURITY SETUP =====
 setupSecurity(app);
 
-// ===== MIDDLEWARE SETUP =====
-app.use(express.json({ limit: '10mb' })); // Parses JSON data in requests with size limit
-app.use(cors()); // Enables cross-origin resource sharing
+app.use(express.json({ limit: '10mb' }));
+app.use(cors());
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -53,17 +44,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// ===== API DOCUMENTATION =====
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
-
-// ===== HEALTH CHECK ROUTES =====
 app.use('/health', healthRoutes);
-
-// ===== API ROUTES =====
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/users/upgrade', upgradeRoutes);
 app.use('/api/companies', companyRoutes);
-app.use('/api/role-transition', roleTransitionRoutes);
 app.use('/api/drivers', driverRoutes);
 app.use('/api/trucks', truckRoutes);
 app.use('/api/jobcard', jobCardRoutes);
@@ -73,7 +59,6 @@ app.use('/api/admin', adminPanelRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/payments', paymentRoutes);
 
-// ===== ROOT ROUTE =====
 app.get('/', (req, res) => {
     res.json({
         message: 'Repair Shop Management API',
@@ -83,53 +68,30 @@ app.get('/', (req, res) => {
     });
 });
 
-// ===== ERROR HANDLING MIDDLEWARE =====
-const errorHandler = (err, req, next, res) => {
+const errorHandler = (err, req, res, next) => {
     console.error(err.stack);
 
-    // Mongoose validation error
     if (err.name === 'ValidationError') {
         const errors = Object.values(err.errors).map(e => e.message);
-        return res.status(400).json({ 
-            success: false, 
-            error: 'Validation Error', 
-            message: errors.join(', ') 
-        });
+        return res.status(400).json({ success: false, error: 'Validation Error', message: errors.join(', ') });
     }
 
-    // Mongoose duplicate key error
     if (err.code === 11000) {
-        const field = Object.keys(err.keyValue)[0];
-        return res.status(400).json({
-            success: false,
-            error: 'Duplicate Error',
-            message: `${field} already exists`
-        });
+        const field = Object.keys(err.keyValue || {})[0];
+        return res.status(400).json({ success: false, error: 'Duplicate Error', message: `${field || 'Field'} already exists` });
     }
 
-    // JWT errors
     if (err.name === 'JsonWebTokenError') {
-        return res.status(401).json({
-            success: false,
-            error: 'Invalid Token',
-            message: 'Please login again'
-        });
+        return res.status(401).json({ success: false, error: 'Invalid Token', message: 'Please login again' });
     }
 
-    // Log the error using Winston logger
     logger.error(`${err.status || 500} - ${err.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
 
-    // Generic error response
-    res.status(err.status || 500).json({ 
-        success: false,
-        error: 'Server Error', 
-        message: process.env.NODE_ENV === 'production' ? 'Something went wrong!' : err.message 
-    });
+    res.status(err.status || 500).json({ success: false, error: 'Server Error', message: process.env.NODE_ENV === 'production' ? 'Something went wrong!' : err.message });
 };
 
 app.use(errorHandler);
 
-// ===== GRACEFUL SHUTDOWN =====
 process.on('SIGINT', async () => {
     console.log('Closing MongoDB connection...');
     await mongoose.connection.close();
@@ -137,10 +99,8 @@ process.on('SIGINT', async () => {
     process.exit(0);
 });
 
-// ===== SERVER STARTUP =====
 const PORT = process.env.PORT || 3000;
 
-// Only start server if not in test environment
 if (process.env.NODE_ENV !== 'test') {
     const server = app.listen(PORT, '0.0.0.0', () => {
         console.log(`🚀 Server running on port ${PORT}`);
@@ -149,9 +109,7 @@ if (process.env.NODE_ENV !== 'test') {
         console.log(`⚡ WebSocket Server: ws://localhost:${PORT}/ws`);
     });
 
-    // ===== WEBSOCKET SETUP =====
     const realTimeTracker = require('./utils/realTimeTracker');
     realTimeTracker.initialize(server);
 }
-// Export for testing
 module.exports = app;

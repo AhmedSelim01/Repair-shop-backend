@@ -1,22 +1,39 @@
+// routes/companyRoutes.js
 const express = require('express');
+const router = express.Router();
+
+const {
+    createCompany,
+    completeProfile,
+    addAssociations,
+    updateCompany,
+    getAllCompanies,
+    getCompanyById,
+    deleteCompany
+} = require('../controllers/companyController');
+
 const { authMiddleware } = require('../middleware/authMiddleware');
 const { roleMiddleware } = require('../middleware/roleMiddleware');
 const { validateObjectId } = require('../middleware/validationMiddleware');
-const { createCompany, completeProfile, addAssociations, updateCompany, getAllCompanies, getCompanyById, deleteCompany } = require('../controllers/companyController');
-const router = express.Router();
 
-// Create a new company
+// Create a new company (admin or employee)
 router.post('/', authMiddleware, roleMiddleware(['admin', 'employee']), createCompany);
-// Complete company profile
+
+// Complete or update company profile
 router.put('/:id/complete-profile', validateObjectId, authMiddleware, roleMiddleware(['admin', 'employee', 'company']), completeProfile);
-// Add associations to company
+
+// Add drivers or trucks to company
 router.put('/:id/add-associations', validateObjectId, authMiddleware, roleMiddleware(['admin', 'employee', 'company']), addAssociations);
-// Update company details
+
+// Update company (restricted to admin)
 router.put('/:id', validateObjectId, authMiddleware, roleMiddleware(['admin']), updateCompany);
-// Get all companies
+
+// Get list of all companies
 router.get('/', authMiddleware, roleMiddleware(['admin', 'employee']), getAllCompanies);
-// Get company by ID
+
+// Get a single company by ID
 router.get('/:id', validateObjectId, authMiddleware, roleMiddleware(['admin', 'employee']), getCompanyById);
+
 // Delete company
 router.delete('/:id', validateObjectId, authMiddleware, roleMiddleware(['admin']), deleteCompany);
 

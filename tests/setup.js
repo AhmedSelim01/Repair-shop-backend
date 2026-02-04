@@ -25,8 +25,7 @@ beforeAll(async () => {
   }
 });
 
-afterEach(async () => {
-  // Clean collections after each test
+afterAll(async () => {
   if (mongoose.connection.readyState === 1) {
     const collections = mongoose.connection.collections;
     for (const key in collections) {

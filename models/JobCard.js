@@ -1,80 +1,37 @@
 const mongoose = require('mongoose');
-const { Schema } = mongoose;
 
-const JobCardSchema = new Schema({
-    // Truck Reference
-    truckId: {
-        type: Schema.Types.ObjectId,
-        ref: 'Truck',
-        required: true,
-        unique: true,
-    },
-    // Entry Date
-    entryDate: {
-        type: Date,
-        default: Date.now,
-    },
-    // Description of Repairs
-    description: [{
-        partName: { 
-            type: String, 
-            required: true, 
-            trim: true, 
-        },
-        partCost: { 
-            type: Number, 
-            required: true, 
-            min: 0,
-        },
-        repairFee: { 
-            type: Number, 
-            required: true, 
-            min: 0, 
-        },
-    }],
-    // Status of the Job Card
-    status: {
-        type: String,
-        enum: ['in-progress', 'completed', 'archived'],
-        default: 'in-progress',
-    },
-    // Completed Date
-    completedDate: {
-        type: Date,
-        default: null,
-    },
-    companyId: {
-        type: Schema.Types.ObjectId,
-        ref: 'user',
-        spares: true,
-        defualt: null
-    },
-
-    // Driver Information
-    driverName: {
-        type: String,
-        trim: true,
-        required: function () { 
-            return !!this.companyId; 
-        },
-    },
-    driverPhone: {
-        type: String,
-        required: function () { 
-            return !!this.companyId; 
-        },
-        validate: {
-            validator: function(v) {
-                if(!v & !this.companyId) return true;
-                return /^[0-9]{10}$/.test(v);
-            },
-            message: props => `${props.value} is not a valid 10-digit phone number!`,
-        },
-    },
-}, {
-    timestamps: true,
+const statusUpdateSchema = new mongoose.Schema({
+  status: { type: String, required: true },
+  message: { type: String, default: '' },
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  timestamp: { type: Date, default: Date.now },
 });
 
-// Create JobCard model
-const JobCard = mongoose.model('JobCard', JobCardSchema);
-module.exports = JobCard;
+const jobCardSchema = new mongoose.Schema(
+  {
+    truckId: { type: mongoose.Schema.Types.ObjectId, ref: 'Truck', required: true },
+    truckOwnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
+
+    description: { type: String, required: true },
+    driverName: { type: String },
+    driverPhone: { type: String },
+
+    status: {
+      type: String,
+      enum: ['checking', 'repair_in_progress', 'ready_for_pickup', 'completed', 'archived'],
+      default: 'checking',
+    },
+
+    statusUpdates: [statusUpdateSchema],
+  },
+  { timestamps: true }
+);
+
+// Method: Add status update
+jobCardSchema.methods.addStatusUpdate = function (status, message, updatedBy) {
+  this.status = status;
+  this.statusUpdates.push({ status, message, updatedBy });
+};
+
+module.exports = mongoose.model('JobCard', jobCardSchema);

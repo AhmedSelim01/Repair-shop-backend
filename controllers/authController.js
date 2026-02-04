@@ -1,162 +1,246 @@
-// Import required dependencies for authentication functionality
+// controllers/authController.js
+const asyncHandler = require('express-async-handler');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const asyncHandler = require('express-async-handler'); // Handles async errors automatically
-const jwt = require('jsonwebtoken'); // For creating and verifying JWT tokens
-const crypto = require('crypto'); // For generating secure random codes
-const passwordResetLimiter = require('../models/RateLimiter'); // Rate limiting for security
-require('dotenv').config(); // Load environment variables
+const passwordResetLimiter = require('../models/RateLimiter'); // assume exists
+require('dotenv').config();
 
-/**
- * Utility function to generate JWT tokens for authenticated users
- * @param {Object} user - User object from database
- * @returns {String} - Signed JWT token containing user info
- */
-const generateToken = (user) => {
-    return jwt.sign(
-        { 
-            id: user._id,    // User's unique database ID
-            role: user.role, // User's role for authorization
-            email: user.email // User's email for identification
-        },
-        process.env.JWT_SECRET, // Secret key from environment variables
-        { expiresIn: process.env.JWT_EXPIRES_IN || '1d' } // Token expiration (default 1 day)
-    );
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1d';
+
+// --------------------
+// Helper functions
+// --------------------
+const isStrongPassword = (pw) => {
+  if (!pw || typeof pw !== 'string') return false;
+  return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/.test(pw);
 };
 
-/**
- * USER REGISTRATION ENDPOINT
- * Handles new user registration with role-based field validation
- * Prevents duplicate accounts and enforces business rules
- */
+const isValidEmail = (email) => {
+  if (!email || typeof email !== 'string') return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+};
+
+const generateToken = (user) =>
+  jwt.sign(
+    {
+      id: user._id.toString(),
+      role: user.role,
+      email: user.email,
+      companyId: user.companyId || null,
+    },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN }
+  );
+
+const findUserByEmailOrPhone = async ({ email, phone }) => {
+  return User.findOne({
+    $or: [
+      email ? { email: email.toLowerCase().trim() } : null,
+      phone ? { phone } : null,
+    ].filter(Boolean),
+  });
+};
+
+// --------------------
+// REGISTER USER
+// --------------------
 exports.registerUser = asyncHandler(async (req, res) => {
-    // Extract all possible fields from request body
-    const { name, phone, email, password, companyName, licensePlate, driverInfo, role } = req.body;
+  const { name, email, phone, password, role = 'general' } = req.body;
 
-    // Basic validation - password is mandatory for all users
-    if (!password) {
-        return res.status(400).json({success: false,  message: 'Password is required.' });
-    }
-
-    // DUPLICATE PREVENTION: Check if email or phone already exists in database
-    // Using MongoDB $or operator to check multiple conditions
-    const duplicateUser = await User.findOne({ $or: [{ email }, { phone }] });
-    if (duplicateUser) {
-        // Build detailed error message showing which fields conflict
-        const conflicts = [];
-        if (duplicateUser.email === email) conflicts.push('email');
-        if (duplicateUser.phone === phone) conflicts.push('phone number');
-        return res.status(400).json({
-            success: false,
-            message: `The following fields already exist: ${conflicts.join(', ')}.`,
-        });
-    }
-
-    const user = await User.create({
-        name,
-        email, 
-        password,
-        phone: role !== 'admin' ? phone : undefined, // Include phone if not admin
-        companyName: role === 'company' ? companyName : undefined, // Only for companies
-        licensePlate: role === 'truck_owner' ? licensePlate : undefined, // Only for truck owners
-        driverInfo: role === 'company' ? driverInfo : undefined, // Only for companies
-        role,
+  // Required fields
+  if (!email || !password) {
+    return res.status(400).json({
+      success: false,
+      message: 'Email and password are required.',
     });
+  }
 
-    res.status(201).json({
-        success: true,
-        _id: user._id,
-        email: user.email,
-        role: user.role,
-        token: generateToken(user),
-        message: 'User registered successfully.',
+  // Email validation (FIX)
+  if (!isValidEmail(email)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid email format.',
     });
+  }
+
+  // Password strength
+  if (!isStrongPassword(password)) {
+    return res.status(400).json({
+      success: false,
+      message:
+        'Password must be at least 8 characters and include uppercase, lowercase, number, and special character.',
+    });
+  }
+
+  // Unique checks
+  if (await findUserByEmailOrPhone({ email })) {
+    return res.status(409).json({
+      success: false,
+      message: 'Email already in use.',
+    });
+  }
+
+  if (phone && (await findUserByEmailOrPhone({ phone }))) {
+    return res.status(409).json({
+      success: false,
+      message: 'Phone already in use.',
+    });
+  }
+
+  // Prevent unsafe role creation
+  const safeRole = ['admin', 'employee'].includes(role) ? role : 'general';
+
+  const user = await User.create({
+    name,
+    email: email.toLowerCase().trim(),
+    phone,
+    password,
+    role: safeRole,
+  });
+
+  res.status(201).json({
+    success: true,
+    _id: user._id,
+    email: user.email,
+    role: user.role,
+    token: generateToken(user),
+    message: 'User registered successfully.',
+  });
 });
 
-/**
- * USER LOGIN ENDPOINT
- * Authenticates users and returns JWT token for session management
- * Uses bcrypt for secure password comparison
- */
-exports.loginUser = asyncHandler(async (req,res) => {
-    const { email, password } = req.body;
+// --------------------
+// LOGIN USER
+// --------------------
+exports.loginUser = asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
 
-    // INPUT VALIDATION: Ensure both email and password are provided
-    if(!email || !password) {
-        return res.status(400).json({ success: false, message: 'Email and password are required.' });
-    }
+  if (!email || !password) {
+    return res.status(400).json({
+      success: false,
+      message: 'Email and password are required.',
+    });
+  }
 
-    // DATABASE LOOKUP: Find user by email (case-insensitive due to schema)
-    const user = await User.findOne({ email });
-    
-    // AUTHENTICATION CHECK: Verify user exists and password matches
-    // user.matchPassword() is a custom method that uses bcrypt.compare()
-    if (user && (await user.matchPassword(password))) {
-        // SUCCESS: Return user data and JWT token for future requests
-        res.status(200).json({ 
-            success: true,
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role, // Important for role-based access control
-            token: generateToken(user), // JWT token for authentication
-        });
-    } else {
-        // FAILURE: Generic error message for security (don't reveal if email exists)
-        res.status(400).json({ success: false, message: 'Invalid email or password.' });
-    }
+  const user = await findUserByEmailOrPhone({ email });
+
+  if (!user || !(await user.matchPassword(password))) {
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid email or password.',
+    });
+  }
+
+  res.status(200).json({
+    success: true,
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    token: generateToken(user),
+  });
 });
 
-// Request password reset code
+// --------------------
+// REQUEST RESET CODE
+// --------------------
 exports.requestResetCode = asyncHandler(async (req, res) => {
-    const { email, phone } = req.body;
+  const { email, phone } = req.body;
 
-    // Apply rate limiting
-    try{
-        await passwordResetLimiter.consume(req.ip);
-    }catch (err) {
-        console.error('The user send too many password resets in a short time.', err)
-        return res.status(429).json({success: false, message: 'Too many password reset requests. Please try again after 1 day.'});
-    }
+  try {
+    await passwordResetLimiter.consume(req.ip);
+  } catch {
+    return res.status(429).json({
+      success: false,
+      message: 'Too many requests. Try again later.',
+    });
+  }
 
-    if (!email && !phone) {
-        return res.status(400).json({success: false, message:'Email or phone number is required.'});
-    }
+  if (!email && !phone) {
+    return res.status(400).json({
+      success: false,
+      message: 'Email or phone is required.',
+    });
+  }
 
-    const user = await User.findOne({ $or: [{ email }, { phone }] });
-    if (!user) {
-        return res.status(200).json({success: false, message: 'If your email/phone is registered, a reset code will be send shortly.'});
-    }
+  const user = await findUserByEmailOrPhone({ email, phone });
 
-    const resetCode = crypto.randomInt(100000, 999999).toString();
-    user.resetCode = resetCode;
-    user.resetCodeExpires = Date.now() + 5 * 60 * 1000; // Expires in 5 minutes
-    await user.save();
+  // Do not reveal account existence
+  if (!user) {
+    return res.status(200).json({
+      success: true,
+      message: 'If the account exists, a reset code will be sent.',
+    });
+  }
 
-    console.error(`Password reset code for ${email || phone}: ${resetCode}`);
-    res.status(200).json({ success: true, message: 'If your email/phone is registered, a reset code will be send shortly.' });
+  const resetCode = crypto.randomInt(100000, 999999).toString();
+
+  user.resetCode = resetCode;
+  user.resetCodeExpires = Date.now() + 5 * 60 * 1000; // 5 minutes
+  await user.save();
+
+  console.info(
+    `Password reset code for ${user.email || user.phone}: ${resetCode}`
+  );
+
+  res.status(200).json({
+    success: true,
+    message: 'If the account exists, a reset code will be sent.',
+  });
 });
 
-// Password reset code verification
+// --------------------
+// RESET PASSWORD
+// --------------------
 exports.resetPassword = asyncHandler(async (req, res) => {
-    const { email, phone, resetCode, newPassword } = req.body;
+  const { email, phone, resetCode, newPassword } = req.body;
 
-    // Apply rate limiting
-    try{
-        await passwordResetLimiter.consume(req.ip);
-    }catch (err) {
-        console.error('The user send too many password resets in a short time.', err)
-        return res.status(429).json({success: false, message: 'Too many password reset requests. Please try again after 1 day.'});
-    }
+  try {
+    await passwordResetLimiter.consume(req.ip);
+  } catch {
+    return res.status(429).json({
+      success: false,
+      message: 'Too many requests. Try again later.',
+    });
+  }
 
-    const user = await User.findOne({ $or: [{ email }, { phone }] });
-    if (!user || user.resetCode !== resetCode || user.resetCodeExpires < Date.now()) {
-        return res.status(400).json({success: false, message: 'Invalid or expired reset code.'});
-    }
+  if (!resetCode || !newPassword || (!email && !phone)) {
+    return res.status(400).json({
+      success: false,
+      message: 'resetCode, newPassword, and email or phone are required.',
+    });
+  }
 
-    user.password = newPassword;
-    user.resetCode = null;
-    user.resetCodeExpires = null;
-    await user.save();
+  if (!isStrongPassword(newPassword)) {
+    return res.status(400).json({
+      success: false,
+      message:
+        'New password must be at least 8 characters and include uppercase, lowercase, number, and special character.',
+    });
+  }
 
-    res.status(200).json({ success: true, message: 'Password reset successfully.' });
+  const user = await findUserByEmailOrPhone({ email, phone });
+
+  if (
+    !user ||
+    !user.resetCode ||
+    user.resetCode !== String(resetCode) ||
+    user.resetCodeExpires < Date.now()
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid or expired reset code.',
+    });
+  }
+
+  user.password = newPassword;
+  user.resetCode = null;
+  user.resetCodeExpires = null;
+  await user.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Password reset successfully.',
+  });
 });

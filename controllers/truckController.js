@@ -1,241 +1,164 @@
 // controllers/truckController.js
 const asyncHandler = require('express-async-handler');
+const mongoose = require('mongoose');
 const Truck = require('../models/Truck');
 const User = require('../models/User');
 const Company = require('../models/Company');
+const JobCard = require('../models/JobCard');
 
-exports.createTruck = asyncHandler(async (req, res, next) => {
-    try {
-        const { licensePlate, brand, companyId } = req.body;
-        
-        // Check if truck already exists
-        const existingTruck = await Truck.findOne({ licensePlate });
-        if (existingTruck) {
-            return res.status(400).json({
-                success: false,
-                message: 'Truck with this license plate already exists.'
-            });
-        }
+const validStages = ['inspection', 'repair in progress', 'quality check', 'ready for pick-up'];
 
-        const truckData = {
-            licensePlate,
-            brand,
-            owner: req.user.id,
-            status: 'pending'
-        };
+async function getActiveJobCard(truckId) {
+  return await JobCard.findOne({
+    truckId,
+    isCompleted: false
+  })
+    .sort({ createdAt: -1 })
+    .populate('truckId')
+    .populate('ownerId')
+    .populate('companyId')
+    .populate('workedOnBy.employeeId');
+}
 
-        if (companyId) {
-            const company = await Company.findById(companyId);
-            if (!company) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Company not found.'
-                });
-            }
-            truckData.companyId = companyId;
-        }
+exports.createTruck = asyncHandler(async (req, res) => {
+  const { licensePlate, brand, model, year, companyId } = req.body;
 
-        const truck = await Truck.create(truckData);
+  if (!licensePlate || !brand || !model || !year) {
+    return res.status(400).json({ success: false, message: 'licensePlate, brand, model, and year are required.' });
+  }
 
-        // Update user's associated trucks
-        await User.findByIdAndUpdate(
-            req.user.id,
-            { $push: { associatedTrucks: truck._id } }
-        );
+  const existingTruck = await Truck.findOne({ licensePlate: licensePlate.toUpperCase().trim() });
+  if (existingTruck) return res.status(409).json({ success: false, message: 'Truck with this license plate already exists.' });
 
-        // If company provided, update company's associated trucks
-        if (companyId) {
-            await Company.findByIdAndUpdate(
-                companyId,
-                { $push: { associatedTrucks: truck._id } }
-            );
-        }
+  const truckData = {
+    licensePlate: licensePlate.toUpperCase().trim(),
+    brand,
+    model,
+    year,
+    owner: req.user._id,
+    status: 'pending'
+  };
 
-        res.status(201).json({
-            success: true,
-            message: 'Truck registered successfully.',
-            truck
-        });
-    } catch (error) {
-        next(error);
-    }
+  if (companyId) {
+    const company = await Company.findById(companyId);
+    if (!company) return res.status(404).json({ success: false, message: 'Company not found.' });
+    truckData.companyId = companyId;
+  }
+
+  const truck = await Truck.create(truckData);
+
+  await User.findByIdAndUpdate(req.user._id, { $push: { trucks: truck._id } });
+
+  if (companyId) {
+    await Company.findByIdAndUpdate(companyId, { $push: { associatedTrucks: truck._id } });
+  }
+
+  res.status(201).json({ success: true, message: 'Truck registered successfully.', truck });
 });
 
-exports.getAllTrucks = asyncHandler(async (req, res, next) => {
-    try {
-        const page = parseInt(req.query.page, 10) || 1;
-        const limit = parseInt(req.query.limit, 10) || 10;
+exports.getAllTrucks = asyncHandler(async (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(50, parseInt(req.query.limit, 10) || 10);
 
-    // Validate query params
-    if (page <= 0 || limit <= 0) {
-        res.status(400);
-        throw new Error('Page and limit must be positive numbers.');
-    }
+  const totalTrucks = await Truck.countDocuments();
 
-        const totalTrucks = await Truck.countDocuments();
-        const trucks = await Truck.find()
-            .populate('owner', 'name email')
-            .populate('companyId', 'companyName')
-            .populate('currentJobCardId')
-            .skip((page - 1) * limit)
-            .limit(limit);
+  const trucks = await Truck.find()
+    .populate('owner', 'name email phone')
+    .populate('companyId', 'companyName')
+    .populate('jobCards', 'status startDate endDate')
+    .skip((page - 1) * limit)
+    .limit(limit)
+    .sort({ createdAt: -1 });
 
-        res.status(200).json({
-            success: true,
-            metadata: {
-                total: totalTrucks,
-                currentPage: page,
-                totalPages: Math.ceil(totalTrucks / limit),
-            },
-            data: trucks,
-        });
-    } catch (error) {
-        next(error);
-    }
+  res.status(200).json({ success: true, metadata: { total: totalTrucks, currentPage: page, totalPages: Math.ceil(totalTrucks / limit) }, data: trucks });
 });
 
-exports.getTruckById = asyncHandler(async (req, res, next) => {
-    try {
-        const truck = await Truck.findById(req.params.id)
-            .populate('owner', 'name email')
-            .populate('companyId', 'companyName')
-            .populate('currentJobCardId')
-            .populate('repairHistory');
+exports.getTruckById = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: 'Invalid truck ID' });
 
-        if (!truck) {
-            return res.status(404).json({
-                success: false,
-                message: 'Truck not found.'
-            });
-        }
+  const truck = await Truck.findById(id)
+    .populate('owner', 'name email phone')
+    .populate('companyId', 'companyName')
+    .populate('jobCards', 'status startDate endDate');
 
-        res.status(200).json({
-            success: true,
-            truck
-        });
-    } catch (error) {
-        next(error);
-    }
+  if (!truck) return res.status(404).json({ success: false, message: 'Truck not found' });
+
+  res.status(200).json({ success: true, truck });
 });
 
-exports.updateTruck = asyncHandler(async (req, res, next) => {
-    try {
-        const { brand, status, repairMilestones } = req.body;
+exports.updateTruck = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { brand, model, status } = req.body;
 
-        const truck = await Truck.findById(req.params.id);
-        if (!truck) {
-            return res.status(404).json({
-                success: false,
-                message: 'Truck not found.'
-            });
-        }
+  const truck = await Truck.findById(id);
+  if (!truck) return res.status(404).json({ success: false, message: 'Truck not found' });
 
-        // Only allow owner or associated company to update
-        if (truck.owner.toString() !== req.user.id && 
-            truck.companyId?.toString() !== req.user.companyId?.toString()) {
-            return res.status(403).json({
-                success: false,
-                message: 'Not authorized to update this truck.'
-            });
-        }
+  const isOwner = truck.owner.toString() === req.user._id.toString();
+  const isCompany = truck.companyId?.toString() === req.user.companyId?.toString();
 
-        if (brand) truck.brand = brand;
-        if (status) truck.status = status;
-        if (repairMilestones) {
-            truck.repairMilestones.push(...repairMilestones);
-        }
+  if (!isOwner && !isCompany && req.user.role !== 'admin') {
+    return res.status(403).json({ success: false, message: 'Not authorized to update this truck.' });
+  }
 
-        const updatedTruck = await truck.save();
+  if (brand) truck.brand = brand;
+  if (model) truck.model = model;
+  if (status && ['pending','in-repair','quality_check','repaired','archived'].includes(status)) truck.status = status;
 
-        res.status(200).json({
-            success: true,
-            message: 'Truck updated successfully.',
-            truck: updatedTruck
-        });
-    } catch (error) {
-        next(error);
-    }
+  const updatedTruck = await truck.save();
+
+  res.status(200).json({ success: true, message: 'Truck updated successfully.', truck: updatedTruck });
 });
 
-exports.deleteTruck = asyncHandler(async (req, res, next) => {
-    try {
-        const truck = await Truck.findById(req.params.id);
-        if (!truck) {
-            return res.status(404).json({
-                success: false,
-                message: 'Truck not found.'
-            });
-        }
+exports.deleteTruck = asyncHandler(async (req, res) => {
+  const { id } = req.params;
 
-        // Only allow owner to delete
-        if (truck.owner.toString() !== req.user.id) {
-            return res.status(403).json({
-                success: false,
-                message: 'Not authorized to delete this truck.'
-            });
-        }
+  const truck = await Truck.findById(id);
+  if (!truck) return res.status(404).json({ success: false, message: 'Truck not found' });
 
-        // Remove truck reference from owner's associated trucks
-        await User.findByIdAndUpdate(
-            truck.owner,
-            { $pull: { associatedTrucks: truck._id } }
-        );
+  if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Only admin can delete trucks.' });
 
-        // If associated with company, remove from company's trucks
-        if (truck.companyId) {
-            await Company.findByIdAndUpdate(
-                truck.companyId,
-                { $pull: { associatedTrucks: truck._id } }
-            );
-        }
+  await User.findByIdAndUpdate(truck.owner, { $pull: { trucks: truck._id } });
 
-        await truck.deleteOne();
+  if (truck.companyId) {
+    await Company.findByIdAndUpdate(truck.companyId, { $pull: { associatedTrucks: truck._id } });
+  }
 
-        res.status(200).json({
-            success: true,
-            message: 'Truck deleted successfully.'
-        });
-    } catch (error) {
-        next(error);
-    }
+  await truck.deleteOne();
+
+  res.status(200).json({ success: true, message: 'Truck deleted successfully.' });
 });
 
-exports.updateTruckRepairStatus = asyncHandler(async (req, res, next) => {
-    try {
-        const { stage } = req.body;
-        
-        if (!['inspection', 'repair in progress', 'quality check', 'ready for pick-up'].includes(stage)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid repair stage.'
-            });
-        }
+exports.updateTruckRepairStatus = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { stage } = req.body;
 
-        const truck = await Truck.findById(req.params.id);
-        if (!truck) {
-            return res.status(404).json({
-                success: false,
-                message: 'Truck not found.'
-            });
-        }
+  if (!validStages.includes(stage)) return res.status(400).json({ success: false, message: 'Invalid repair stage.' });
 
-        truck.repairMilestones.push({
-            stage,
-            completedAt: new Date()
-        });
+  const truck = await Truck.findById(id);
+  if (!truck) return res.status(404).json({ success: false, message: 'Truck not found' });
 
-        if (stage === 'ready for pick-up') {
-            truck.status = 'finalized';
-        }
+  truck.repairMilestones.push({ stage, completedAt: new Date() });
 
-        const updatedTruck = await truck.save();
+  if (stage === 'ready for pick-up') truck.status = 'repaired';
 
-        res.status(200).json({
-            success: true,
-            message: 'Repair status updated successfully.',
-            truck: updatedTruck
-        });
-    } catch (error) {
-        next(error);
-    }
+  const updatedTruck = await truck.save();
+
+  res.status(200).json({ success: true, message: 'Repair status updated.', truck: updatedTruck });
+});
+
+exports.getActiveJobCardForTruck = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: 'Invalid truck ID' });
+
+  const truck = await Truck.findById(id);
+  if (!truck) return res.status(404).json({ success: false, message: 'Truck not found' });
+
+  const jobCard = await getActiveJobCard(id);
+
+  if (!jobCard) {
+    return res.status(200).json({ success: true, active: false, message: 'No active job card for this truck.' });
+  }
+
+  return res.status(200).json({ success: true, active: true, jobCard });
 });
