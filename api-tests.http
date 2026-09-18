@@ -1,0 +1,367 @@
+### ========================================
+### 1. HEALTH CHECK
+### ========================================
+GET http://localhost:3000/health
+
+
+### ========================================
+### 2. AUTHENTICATION
+### ========================================
+
+### Register a regular user
+POST http://localhost:3000/api/auth/register
+Content-Type: application/json
+
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "John@123456",
+  "role": "general"
+}
+
+### Register an admin user
+POST http://localhost:3000/api/auth/register
+Content-Type: application/json
+
+{
+  "name": "Admin User",
+  "email": "admin@example.com",
+  "password": "Admin@123456",
+  "role": "admin"
+}
+
+### Login as regular user
+POST http://localhost:3000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin0@user.com",
+  "password": "admin0"
+}
+
+### Login as admin
+POST http://localhost:3000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin0@user.com",
+  "password": "admin0"
+}
+
+
+### ========================================
+### 3. USER ENDPOINTS
+### ========================================
+
+### Get current user profile
+GET http://localhost:3000/api/users/me
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODAyMTMzOTgsImV4cCI6MTc4MDI5OTc5OH0.z2gNO-jmymJMjW7xIMfqcXTLtW8XY8LF8hwM_GAFHVg
+
+### Get all users (admin only)
+GET http://localhost:3000/api/users
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODAyMTMzOTgsImV4cCI6MTc4MDI5OTc5OH0.z2gNO-jmymJMjW7xIMfqcXTLtW8XY8LF8hwM_GAFHVg
+
+
+### ========================================
+### 4. TRUCK ENDPOINTS
+### ========================================
+
+### Create a truck
+POST http://localhost:3000/api/trucks
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODgzNTczNDcsImV4cCI6MTc4ODQ0Mzc0N30._9NigQTw6XFzFMJhmGV3tvwVAsO8DqlaZarq-UqJ5wg
+Content-Type: application/json
+
+{
+  "licensePlate": "D-23456",
+  "brand": "Actros",
+  "model": "MP4",
+  "year": 2023
+}
+
+### Get all trucks
+GET http://localhost:3000/api/trucks
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODgzNTczNDcsImV4cCI6MTc4ODQ0Mzc0N30._9NigQTw6XFzFMJhmGV3tvwVAsO8DqlaZarq-UqJ5wg
+
+### Get truck by ID
+GET http://localhost:3000/api/drivers/6a2eb7e59cba2cdfd02eaa6a
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODE3OTIzNTEsImV4cCI6MTc4MTg3ODc1MX0.1clK8eiL0AuALTLy55aeSJkVwS_ckEPNP5a2uCniLps
+
+### Update truck
+PUT http://localhost:3000/api/trucks/6a982bd5668555440f17cdde
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODgzNTczNDcsImV4cCI6MTc4ODQ0Mzc0N30._9NigQTw6XFzFMJhmGV3tvwVAsO8DqlaZarq-UqJ5wg
+Content-Type: application/json
+
+{
+  "brand": "Mercedes",
+  "model": "Actros MP5",
+  "year": 2024,
+  "status": "pending"
+}
+
+### Delete truck 
+DELETE http://localhost:3000/api/trucks/6a1be7beaf0931a705660cd7
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODc0MDQ5NzEsImV4cCI6MTc4NzQ5MTM3MX0.x9sqGBVUEiG8cPgB0DhVpYwQiSfyKhXoINTM1XQ2JOc
+
+### Update truck repair status
+PATCH http://localhost:3000/api/trucks/6a982bd5668555440f17cdde/repair-status
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODgzNTczNDcsImV4cCI6MTc4ODQ0Mzc0N30._9NigQTw6XFzFMJhmGV3tvwVAsO8DqlaZarq-UqJ5wg
+Content-Type: application/json
+
+{
+  "stage": "quality check"
+}
+
+
+### ========================================
+### 5. COMPANY ENDPOINTS
+### ========================================
+
+### Create a company
+POST http://localhost:3000/api/companies
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODgwMTExMDYsImV4cCI6MTc4ODA5NzUwNn0.U-WFiEKuJ6IFZniTjIBqdZIk64j1J_uguUX5-IG9UVw
+Content-Type: application/json
+
+{
+  "companyName": "Dubai Logistics LLC",
+  "contactEmail": "info@dubailogistics.com"
+}
+
+### Get all companies
+GET http://localhost:3000/api/companies
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODgwMTAxNzAsImV4cCI6MTc4ODA5NjU3MH0._oxl43zlUJkgVPldepIuevAyH4ZMo40i7VhuH-hXg8s
+
+### Get company by ID
+GET http://localhost:3000/api/companies/6a1be7dfaf0931a705660ce0
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODUzMjQ1NzksImV4cCI6MTc4NTQxMDk3OX0.-YsMUvC-QnlrxKqcVtK4V2xwGGfq9t7ktyt1dmbk7OY
+
+### Update company
+PUT http://localhost:3000/api/companies/6a1be7dfaf0931a705660ce0
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODc0MDQ5NzEsImV4cCI6MTc4NzQ5MTM3MX0.x9sqGBVUEiG8cPgB0DhVpYwQiSfyKhXoINTM1XQ2JOc
+Content-Type: application/json
+
+{
+  "companyName": "Dubai Logistics LLC - Updated",
+  "contactEmail": "updated@dubailogistics.com"
+}
+
+### Delete company 
+DELETE http://localhost:3000/api/companies/6a1be7dfaf0931a705660ce0
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODgwMTAxNzAsImV4cCI6MTc4ODA5NjU3MH0._oxl43zlUJkgVPldepIuevAyH4ZMo40i7VhuH-hXg8s
+
+### Get company drivers
+GET http://localhost:3000/api/drivers/company/6a92e2ac0b5499af92981acb
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODgwMTExMDYsImV4cCI6MTc4ODA5NzUwNn0.U-WFiEKuJ6IFZniTjIBqdZIk64j1J_uguUX5-IG9UVw
+
+
+### ========================================
+### 6. DRIVER ENDPOINTS
+### ========================================
+
+### Create a driver
+POST http://localhost:3000/api/drivers
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODE0NDYzNDEsImV4cCI6MTc4MTUzMjc0MX0.NzVzrS5e-KPlQzvJlSSPBoLjdYIX6Xul2dJoTUboR4g
+Content-Type: application/json
+
+{
+  "driverName": "Ahmed Al Mansouri",
+  "driverPhone": "+971501234567",
+  "driverIdNumber": "784-1990-1234567-5",
+  "truckNumber": "TRK001",
+  "licenseInfo": {
+    "licenseNumber": "DL12345",
+    "licenseExpiry": "2030-12-31T00:00:00.000Z",
+    "licenseType": "heavy"
+  },
+  "emergencyContact": {
+    "name": "Fatima Al Mansouri",
+    "phone": "+971501234568",
+    "relationship": "spouse"
+  }
+}
+
+### Get all drivers
+GET http://localhost:3000/api/drivers
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODgwMTAxNzAsImV4cCI6MTc4ODA5NjU3MH0._oxl43zlUJkgVPldepIuevAyH4ZMo40i7VhuH-hXg8s
+
+### Get driver by ID
+GET http://localhost:3000/api/drivers/6a2eb7e59cba2cdfd02eaa6a
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODUzMjQ1NzksImV4cCI6MTc4NTQxMDk3OX0.-YsMUvC-QnlrxKqcVtK4V2xwGGfq9t7ktyt1dmbk7OY
+
+### Update driver
+PUT http://localhost:3000/api/drivers/6a2eb7e59cba2cdfd02eaa6a
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODc0MDQ5NzEsImV4cCI6MTc4NzQ5MTM3MX0.x9sqGBVUEiG8cPgB0DhVpYwQiSfyKhXoINTM1XQ2JOc
+Content-Type: application/json
+
+{
+  "driverName": "Ahmed Al Mansouri Updated",
+  "driverPhone": "+971501234569",
+  "truckNumber": "TRK002"
+}
+
+### Delete driver
+DELETE http://localhost:3000/api/drivers/6a2eb7e59cba2cdfd02eaa6a
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODgwMTAxNzAsImV4cCI6MTc4ODA5NjU3MH0._oxl43zlUJkgVPldepIuevAyH4ZMo40i7VhuH-hXg8s
+
+
+### ========================================
+### 7. JOB CARD ENDPOINTS
+### ========================================
+
+### Create a job card
+POST http://localhost:3000/api/jobcard
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODE3OTA1ODEsImV4cCI6MTc4MTg3Njk4MX0.H3eKlK3rHa-A18jHqiRclB51yeQahc1e-emJiqGNew8
+Content-Type: application/json
+
+{
+  "truckId": "6a1be7beaf0931a705660cd7",
+  "description": "Engine repair and oil change",
+  "driverName": "Ahmed Al Mansouri",
+  "driverPhone": "+971501234567"
+}
+
+### Get all job cards
+GET http://localhost:3000/api/jobcard
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODgwMTAxNzAsImV4cCI6MTc4ODA5NjU3MH0._oxl43zlUJkgVPldepIuevAyH4ZMo40i7VhuH-hXg8s
+
+### Get job card by ID
+GET http://localhost:3000/api/jobcard/6a33f9bc76a1f40542446d1f
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODUzMjQ1NzksImV4cCI6MTc4NTQxMDk3OX0.-YsMUvC-QnlrxKqcVtK4V2xwGGfq9t7ktyt1dmbk7OY
+
+### Update job card status
+PATCH http://localhost:3000/api/jobcard/6a33f9bc76a1f40542446d1f/status
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODc0MDQ5NzEsImV4cCI6MTc4NzQ5MTM3MX0.x9sqGBVUEiG8cPgB0DhVpYwQiSfyKhXoINTM1XQ2JOc
+Content-Type: application/json
+
+{
+  "status": "repair_in_progress"
+}
+
+### Delete job card
+DELETE http://localhost:3000/api/jobcard/6a33f9bc76a1f40542446d1f
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODgwMTAxNzAsImV4cCI6MTc4ODA5NjU3MH0._oxl43zlUJkgVPldepIuevAyH4ZMo40i7VhuH-hXg8s
+
+
+### ========================================
+### 12. PAGINATION & FILTERING
+### ========================================
+
+### Get users with pagination
+GET http://localhost:3000/api/users?page=1&limit=5&role=admin
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODgzNTkzMTAsImV4cCI6MTc4ODQ0NTcxMH0.xCK6AIOKEzP6Btp_Ii3GNfy8u_7dXkAEkub5Q_QtxnA
+
+### Get trucks with pagination
+GET http://localhost:3000/api/trucks?page=1&limit=5
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODgzNTkzMTAsImV4cCI6MTc4ODQ0NTcxMH0.xCK6AIOKEzP6Btp_Ii3GNfy8u_7dXkAEkub5Q_QtxnA
+
+### Get drivers with pagination
+GET http://localhost:3000/api/drivers?page=1&limit=5
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODg2MTY2MTgsImV4cCI6MTc4ODcwMzAxOH0.vbOvWpeiHl3EChhQWzeWC1b49uMEI4RDwwX_Wkjhsko
+
+### Get job cards with pagination
+GET http://localhost:3000/api/jobcard?page=1&limit=5
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODg2MTY2MTgsImV4cCI6MTc4ODcwMzAxOH0.vbOvWpeiHl3EChhQWzeWC1b49uMEI4RDwwX_Wkjhsko
+
+
+### ========================================
+### 13. CART TESTS
+### ========================================
+
+### Create a store item
+POST http://localhost:3000/api/store
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODk1NjU2OTMsImV4cCI6MTc4OTY1MjA5M30.YbXqrZa-zU6ZpMAfSZusofiHICRm-9nLCIE43wvh1ro
+Content-Type: application/json
+
+{
+  "name": "Brake Pad",
+  "price": 500,
+  "stock": 5,
+  "description": "Ceramic brake pad for trucks",
+  "category": "Brake System"
+}
+
+
+### GET all store items (public)
+GET http://localhost:3000/api/store
+
+
+### ADD first item to cart
+POST http://localhost:3000/api/cart/add
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODk1NjU2OTMsImV4cCI6MTc4OTY1MjA5M30.YbXqrZa-zU6ZpMAfSZusofiHICRm-9nLCIE43wvh1ro
+Content-Type: application/json
+
+{
+  "productId": "6aaa9b19ae9228359259a516",
+  "quantity": 1
+}
+
+
+### ADD second item to cart
+POST http://localhost:3000/api/cart/add
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODk1NjU2OTMsImV4cCI6MTc4OTY1MjA5M30.YbXqrZa-zU6ZpMAfSZusofiHICRm-9nLCIE43wvh1ro
+Content-Type: application/json
+
+{
+  "productId": "6aa543f3b42bd4b06d9293df",
+  "quantity": 1
+}
+
+
+### GET my cart
+GET http://localhost:3000/api/cart
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODk1NjU2OTMsImV4cCI6MTc4OTY1MjA5M30.YbXqrZa-zU6ZpMAfSZusofiHICRm-9nLCIE43wvh1ro
+
+
+### UPDATE item quantity
+PUT http://localhost:3000/api/cart/update
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODk1NjU2OTMsImV4cCI6MTc4OTY1MjA5M30.YbXqrZa-zU6ZpMAfSZusofiHICRm-9nLCIE43wvh1ro
+Content-Type: application/json
+
+{
+  "productId": "6aaa9b19ae9228359259a516",
+  "quantity": 3
+}
+
+
+### UPDATE quantity to 0 (removes the item)
+PUT http://localhost:3000/api/cart/update
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODk1NjU2OTMsImV4cCI6MTc4OTY1MjA5M30.YbXqrZa-zU6ZpMAfSZusofiHICRm-9nLCIE43wvh1ro
+Content-Type: application/json
+
+{
+  "productId": "6aa543f3b42bd4b06d9293df",
+  "quantity": 0
+}
+
+
+### REMOVE specific item from cart
+DELETE http://localhost:3000/api/cart/remove/6aaa9b19ae9228359259a516
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODk1NjU2OTMsImV4cCI6MTc4OTY1MjA5M30.YbXqrZa-zU6ZpMAfSZusofiHICRm-9nLCIE43wvh1ro
+
+
+### CLEAR entire cart
+DELETE http://localhost:3000/api/cart/clear
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODk1NjU2OTMsImV4cCI6MTc4OTY1MjA5M30.YbXqrZa-zU6ZpMAfSZusofiHICRm-9nLCIE43wvh1ro
+
+
+### CHECKOUT with multiple items
+POST http://localhost:3000/api/cart/checkout
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODk1NjU2OTMsImV4cCI6MTc4OTY1MjA5M30.YbXqrZa-zU6ZpMAfSZusofiHICRm-9nLCIE43wvh1ro
+Content-Type: application/json
+
+{
+  "paymentMethod": "cash",
+  "shippingAddress": {
+    "street": "Sheikh Zayed Road",
+    "city": "Dubai",
+    "country": "UAE"
+  }
+}
+
+
+### VERIFY stock decreased after checkout
+GET http://localhost:3000/api/store
+
+
+### GET my cart AFTER checkout
+GET http://localhost:3000/api/cart
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODk1NjU2OTMsImV4cCI6MTc4OTY1MjA5M30.YbXqrZa-zU6ZpMAfSZusofiHICRm-9nLCIE43wvh1ro
