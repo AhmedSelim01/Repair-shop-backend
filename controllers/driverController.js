@@ -88,7 +88,7 @@ exports.getAllDrivers = asyncHandler(async (req, res, next) => {
         res.status(200).json({
             success: true,
             metadata: { total, page, totalPages: Math.ceil(total / limit), limit },
-            drivers
+            data: drivers
         });
     } catch (error) {
         next(error);

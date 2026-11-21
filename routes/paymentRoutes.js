@@ -8,7 +8,8 @@ const {
   getPaymentById,
   refundPayment,
   getPaymentAnalytics,
-  webhookPaymentHandler
+  webhookPaymentHandler,
+  createPayment,
 } = require('../controllers/paymentController');
 
 const { authMiddleware } = require('../middleware/authMiddleware');
@@ -22,71 +23,30 @@ const router = express.Router();
 -------------------------------------------- */
 
 // JobCard payment
-router.post(
-  '/jobcard',
-  authMiddleware,
-  processJobCardPayment
-);
+router.post('/jobcard', authMiddleware, processJobCardPayment);
 
 // Order payment (store purchase)
-router.post(
-  '/order',
-  authMiddleware,
-  processOrderPayment
-);
+router.post('/order', authMiddleware, processOrderPayment);
 
 // Invoice payment
-router.post(
-  '/invoice',
-  authMiddleware,
-  processInvoicePayment
-);
+router.post('/invoice', authMiddleware, processInvoicePayment);
 
-/* -------------------------------------------
-   WEBHOOK (NO AUTH)
--------------------------------------------- */
-router.post(
-  '/webhook',
-  validateWebhookSignature,
-  webhookPaymentHandler
-);
+// GET PAYMENT INTENT
+router.post('/create-intent', authMiddleware, createPayment);
 
-/* -------------------------------------------
-   PAYMENT ANALYTICS (ADMIN / EMPLOYEE)
--------------------------------------------- */
-router.get(
-  '/analytics',
-  authMiddleware,
-  roleMiddleware(['admin', 'employee']),
-  getPaymentAnalytics
-);
+// WEBHOOK (NO AUTH)
+router.post('/webhook', validateWebhookSignature, webhookPaymentHandler);
 
-/* -------------------------------------------
-   PAYMENT HISTORY FOR LOGGED-IN USER
-   - Customers see their own payments
-   - Admin/employee sees ALL
--------------------------------------------- */
-router.get(
-  '/',
-  authMiddleware,
-  getPaymentHistory
-);
+// PAYMENT ANALYTICS (ADMIN / EMPLOYEE)
+router.get('/analytics', authMiddleware, roleMiddleware(['admin', 'employee']), getPaymentAnalytics);
 
-/* -------------------------------------------
-   REFUND ENDPOINT
-   Only admin + employee can refund
--------------------------------------------- */
-router.post(
-  '/:id/refund',
-  authMiddleware,
-  roleMiddleware(['admin', 'employee']),
-  refundPayment
-);
+// PAYMENT HISTORY
+router.get('/', authMiddleware, getPaymentHistory);
+
+// REFUND ENDPOINT
+router.post('/:id/refund', authMiddleware, roleMiddleware(['admin', 'employee']), refundPayment);
 
 // GET SINGLE PAYMENT
-router.get(
-  '/:id',
-  authMiddleware,
-  getPaymentById
-);
+router.get('/:id', authMiddleware, getPaymentById);
+
 module.exports = router;

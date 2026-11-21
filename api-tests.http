@@ -279,10 +279,8 @@ Content-Type: application/json
   "category": "Brake System"
 }
 
-
 ### GET all store items (public)
 GET http://localhost:3000/api/store
-
 
 ### ADD first item to cart
 POST http://localhost:3000/api/cart/add
@@ -294,7 +292,6 @@ Content-Type: application/json
   "quantity": 1
 }
 
-
 ### ADD second item to cart
 POST http://localhost:3000/api/cart/add
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODk1NjU2OTMsImV4cCI6MTc4OTY1MjA5M30.YbXqrZa-zU6ZpMAfSZusofiHICRm-9nLCIE43wvh1ro
@@ -305,11 +302,9 @@ Content-Type: application/json
   "quantity": 1
 }
 
-
 ### GET my cart
 GET http://localhost:3000/api/cart
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODk1NjU2OTMsImV4cCI6MTc4OTY1MjA5M30.YbXqrZa-zU6ZpMAfSZusofiHICRm-9nLCIE43wvh1ro
-
 
 ### UPDATE item quantity
 PUT http://localhost:3000/api/cart/update
@@ -321,7 +316,6 @@ Content-Type: application/json
   "quantity": 3
 }
 
-
 ### UPDATE quantity to 0 (removes the item)
 PUT http://localhost:3000/api/cart/update
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODk1NjU2OTMsImV4cCI6MTc4OTY1MjA5M30.YbXqrZa-zU6ZpMAfSZusofiHICRm-9nLCIE43wvh1ro
@@ -332,16 +326,13 @@ Content-Type: application/json
   "quantity": 0
 }
 
-
 ### REMOVE specific item from cart
 DELETE http://localhost:3000/api/cart/remove/6aaa9b19ae9228359259a516
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODk1NjU2OTMsImV4cCI6MTc4OTY1MjA5M30.YbXqrZa-zU6ZpMAfSZusofiHICRm-9nLCIE43wvh1ro
 
-
 ### CLEAR entire cart
 DELETE http://localhost:3000/api/cart/clear
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODk1NjU2OTMsImV4cCI6MTc4OTY1MjA5M30.YbXqrZa-zU6ZpMAfSZusofiHICRm-9nLCIE43wvh1ro
-
 
 ### CHECKOUT with multiple items
 POST http://localhost:3000/api/cart/checkout
@@ -357,11 +348,30 @@ Content-Type: application/json
   }
 }
 
-
 ### VERIFY stock decreased after checkout
 GET http://localhost:3000/api/store
-
 
 ### GET my cart AFTER checkout
 GET http://localhost:3000/api/cart
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3ODk1NjU2OTMsImV4cCI6MTc4OTY1MjA5M30.YbXqrZa-zU6ZpMAfSZusofiHICRm-9nLCIE43wvh1ro
+
+### Create PaymentIntent for an order
+POST http://localhost:3000/api/payments/create-intent
+Authorization: Bearer YOUR_ADMIN_TOKEN
+Content-Type: application/json
+
+{
+  "orderId": "YOUR_ORDER_ID_HERE"
+}
+
+
+
+
+### Get all orders
+GET http://localhost:3000/api/orders
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3OTQ2NjQ0NzUsImV4cCI6MTc5NDc1MDg3NX0.HFLnQrci6hB1Z9zJ5lBk_aQUzXJqoD_8F1d6WY1ztPE
+
+
+### Get order by ID
+GET http://localhost:3000/api/orders/6aaa9d06ae9228359259a5c6
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3N2EyNzg3NzYwMzE2NGExYTk0OWFlNCIsInJvbGUiOiJhZG1pbiIsImVtYWlsIjoiYWRtaW4wQHVzZXIuY29tIiwiY29tcGFueUlkIjpudWxsLCJpYXQiOjE3OTQ2NjQ0NzUsImV4cCI6MTc5NDc1MDg3NX0.HFLnQrci6hB1Z9zJ5lBk_aQUzXJqoD_8F1d6WY1ztPE

@@ -8,7 +8,7 @@
  */
 
 const stripe = require('stripe');
-const logger = require('../utils/logger');
+const logger = require('./logger');
 
 class PaymentGatewayConfig {
     constructor() {

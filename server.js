@@ -24,6 +24,7 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const invoiceRoutes = require('./routes/invoiceRoutes');
 const upgradeRoutes = require('./routes/updateRoutes');
+const orderRoutes = require('./routes/orderRoutes');
 
 const app = express();
 
@@ -60,6 +61,7 @@ app.use('/api/admin', adminPanelRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/invoices', invoiceRoutes);
+app.use('/api/orders', orderRoutes);
 
 app.get('/', (req, res) => {
     res.json({

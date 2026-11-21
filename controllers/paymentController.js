@@ -2,6 +2,9 @@
 const mongoose = require('mongoose');
 const Payment = require('../models/Payment');
 const JobCard = require('../models/JobCard');
+const Order = require('../models/Order');
+const Invoice = require('../models/Invoice');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 // Build items from amount (fallback for tests)
 const buildItemsFromAmount = (amount) => [
@@ -117,7 +120,7 @@ exports.processInvoicePayment = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid Invoice ID' });
     }
 
-    const invoice = await require('../models/Invoice').findById(invoiceId);
+    const invoice = await Invoice.findById(invoiceId);
     if (!invoice) {
       return res.status(404).json({ success: false, message: 'Invoice not found' });
     }
@@ -302,5 +305,43 @@ exports.webhookPaymentHandler = async (req, res) => {
   } catch (error) {
     console.error('Webhook Error:', error);
     res.status(500).json({ success: false });
+  }
+};
+
+// ----------------------- CREATE PAYMENT INTENT -----------------------
+exports.createPayment = async (req, res) => {
+  try {
+    const {orderId} = req.body;
+    
+    if(!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({ success: false, message: 'Invalid order ID' })
+    };
+
+    const order = await Order.findById(orderId);
+      if (!order) {
+        return res.status(404).json({ success: false, message: 'Order not found' })
+      }
+    
+    if(order.paymentStatus === 'paid') {
+      return res.status(400).json({ success: false, message: 'Order is already paid' })
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(order.totalAmount * 100),
+      currency: (order.currency || 'AED').toLowerCase(),
+      metadata: { orderId: order._id.toString() }
+    });
+
+    return res.status(200).json({
+      success: true,
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+      amount: order.totalAmount,
+      currency: order.currency || 'AED'
+    });
+    
+  } catch (error) {
+    console.error('Payment Intent Error', error)
+    return res.status(500).json({ success: false, message: 'Failed to create a payment intent'})
   }
 };
